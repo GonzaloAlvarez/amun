@@ -1,0 +1,17 @@
+#!/bin/bash
+LIMA_CFG=tst/lima-ubuntu2410.yaml
+LIMA_NAME=amun-test
+
+if limactl list | grep $LIMA_NAME; then
+    limactl stop $LIMA_NAME
+    limactl remove $LIMA_NAME
+fi
+limactl create --name=$LIMA_NAME --tty=false $LIMA_CFG
+limactl start $LIMA_NAME
+limactl copy bootstrap $LIMA_NAME:
+limactl copy -r ../amun $LIMA_NAME:/tmp/amun
+limactl shell $LIMA_NAME chmod +x bootstrap
+limactl shell $LIMA_NAME ./bootstrap
+limactl shell $LIMA_NAME
+limactl stop $LIMA_NAME
+limactl remove $LIMA_NAME
