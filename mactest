@@ -1,0 +1,61 @@
+#!/bin/bash
+
+VM_USERNAME="admin"
+VM_PASSWORD="admin"
+
+function log_output {
+	if [ -z "$2" ] || [ "$2" = "true" ]; then
+		echo "$(date "+%Y/%m/%d %H:%M:%S") $1"
+	fi
+}
+
+function cleanup {
+	log_output "[HOST] Stopping runner script"
+	exit 0
+}
+
+function shutdown {
+    log_output "[HOST] Shutting down VM"
+    tart stop "$INSTANCE_NAME"
+    tart delete "$INSTANCE_NAME"
+}
+
+function ssh_command() {
+	command="$@"
+
+	SSHPASS=$VM_PASSWORD sshpass -e ssh -o StrictHostKeyChecking=no "$VM_USERNAME@$IP_ADDRESS" "$command"
+}
+
+function boot_vm {
+	BASE_IMAGE=$1
+	INSTANCE_NAME=$2
+
+	TART_NO_AUTO_PRUNE="" tart clone "$BASE_IMAGE" "$INSTANCE_NAME"
+	trap 'log_output "[HOST] Killing the VM"; tart delete $INSTANCE_NAME; cleanup' SIGINT SIGTERM
+
+	tart run --no-graphics --vnc --dir amun:. "$INSTANCE_NAME" 2>/dev/null >/dev/null &
+
+	log_output "[HOST] Waiting for VM to boot"
+	IP_ADDRESS=$(tart ip "$INSTANCE_NAME" 2>/dev/null)
+	until [[ "$IP_ADDRESS" =~ ^([0-9]+\.){3}[0-9]+$ ]]; do
+		IP_ADDRESS=$(tart ip "$INSTANCE_NAME")
+		sleep 1
+	done
+
+	# Clean old SSH host key reference for the VM to avoid conflicts
+	ssh-keygen -R "$IP_ADDRESS" >/dev/null 2>/dev/null
+
+	log_output "[HOST] Waiting for SSH to be available on VM"
+	until [ "$(SSHPASS=$VM_PASSWORD sshpass -e ssh -q -o ConnectTimeout=1 -o StrictHostKeyChecking=no "$VM_USERNAME@$IP_ADDRESS" pwd)" ]; do
+		sleep 1
+	done
+}
+
+boot_vm "ghcr.io/cirruslabs/macos-sequoia-vanilla:latest" amunsonoma
+
+ssh_command sudo networksetup -setdnsservers "Ethernet" "8.8.8.8"
+ssh_command cp -Rv "'/Volumes/My Shared Files/amun/bootstrap'" "~/bootstrap"
+ssh_command chmod +x "~/bootstrap"
+ssh_command "AMUN_REPO='/Volumes/My Shared Files/amun' ./bootstrap"
+
+shutdown
