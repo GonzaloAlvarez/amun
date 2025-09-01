@@ -61,9 +61,11 @@ function test_sequoia {
     boot_vm "ghcr.io/cirruslabs/macos-sequoia-vanilla:latest" amunsonoma
 
     ssh_command sudo networksetup -setdnsservers "Ethernet" "8.8.8.8"
-    ssh_command cp -v "'/Volumes/My Shared Files/amun/bootstrap'" "~/bootstrap"
+    ssh_command cp "'/Volumes/My Shared Files/amun/bootstrap'" "~/bootstrap"
     ssh_command chmod +x "~/bootstrap"
     ssh_command "AMUN_REPO='/Volumes/My Shared Files/amun' ./bootstrap"
+
+    breakpoint
 
     shutdown
 }
