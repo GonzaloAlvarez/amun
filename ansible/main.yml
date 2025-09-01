@@ -1,6 +1,7 @@
 ---
 - hosts: all
   roles:
+    - { role: homebrew, become: false, when: "ansible_system == 'Darwin'" }
     - { role: geerlingguy.git, become: true }
     - { role: dotfiles, become: false }
 
