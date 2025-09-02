@@ -1,0 +1,26 @@
+---
+- name: Update and upgrade packages
+  apt:
+    upgrade: full
+    update_cache: yes
+    autoremove: yes
+  become: true
+  retries: 5
+  delay: 5
+  register: result
+  until: result is not failed
+  when: ansible_os_family == 'Debian'
+
+- name: Ensure the different utilities are installed (mac)
+  community.general.homebrew:
+    name: "{{ homebrew_packages }}"
+    state: present
+    update_homebrew: true
+  when: ansible_os_family == 'Darwin'
+
+- name: Ensure the different utilitis are installed (linux)
+  package:
+    name: "{{ linux_packages }}"
+    state: present
+  become: true
+  when: ansible_os_family != 'Darwin'

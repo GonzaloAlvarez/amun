@@ -80,6 +80,8 @@ function test_debian {
     ssh_command chmod +x "~/bootstrap"
     ssh_command "AMUN_REPO='/mnt/shared/amun' ./bootstrap"
 
+    breakpoint
+
     shutdown
 }
 

@@ -1,0 +1,38 @@
+---
+homebrew_packages:
+  - coreutils
+  - moreutils
+  - git
+  - tmux
+  - vim
+  - neovim
+  - asdf
+  - gnupg
+  - pinentry-mac
+  - tig
+  - tio
+
+linux_packages:
+  - apt-transport-https
+  - binutils
+  - cron
+  - curl
+  - debconf-utils
+  - debian-goodies
+  - dnsutils
+  - gnupg
+  - git
+  - hdparm
+  - locales
+  - lsb-release
+  - lsof
+  - rsyslog
+  - rsync
+  - screen
+  - sudo
+  - unzip
+  - python3-pip
+  - python3-setuptools
+  - neovim
+  - net-tools
+
