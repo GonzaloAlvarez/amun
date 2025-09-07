@@ -1,0 +1,46 @@
+---
+- name: Finder | Show status bar
+  community.general.osx_defaults:
+    domain: com.apple.finder
+    key: ShowStatusBar
+    type: bool
+    value: true
+
+- name: Finder | Show path bar
+  community.general.osx_defaults:
+    domain: com.apple.finder
+    key: ShowPathbar
+    type: bool
+    value: true
+
+- name: Global | Always show file extensions
+  community.general.osx_defaults:
+    domain: NSGlobalDomain
+    key: AppleShowAllExtensions
+    type: bool
+    value: true
+
+- name: Finder | Disable the warning when changing a file extension
+  community.general.osx_defaults:
+    domain: com.apple.finder
+    key: FXEnableExtensionChangeWarning
+    type: bool
+    value: false
+
+- name: Finder | Set view style to list view (Nlsv)
+  community.general.osx_defaults:
+    domain: com.apple.finder
+    key: FXPreferredViewStyle
+    type: string
+    value: "Nlsv"
+
+- name: Finder | Keep folders on top when sorting
+  community.general.osx_defaults:
+    domain: com.apple.finder
+    key: _FXSortFoldersFirst
+    type: bool
+    value: true
+
+- name: Restart Finder to apply changes
+  ansible.builtin.command: killall Finder
+  changed_when: false

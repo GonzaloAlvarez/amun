@@ -4,4 +4,4 @@
     - { role: homebrew, become: false, when: "ansible_system == 'Darwin'" }
     - { role: utils, become: false }
     - { role: dotfiles, become: false }
-
+    - { role: config, become: false }

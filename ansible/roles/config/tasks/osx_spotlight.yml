@@ -1,0 +1,22 @@
+---
+- name: Spotlight | Disable Spotlight hotkey (Cmd+Space)
+  ansible.builtin.shell: |
+    defaults write com.apple.symbolichotkeys.plist AppleSymbolicHotKeys -dict-add 64 "
+    <dict><key>enabled</key><false/></dict>
+    "
+  notify: Restart SystemUIServer
+
+- name: Spotlight | Disable Spotlight Finder search (Cmd+Opt+Space)
+  ansible.builtin.shell: |
+    defaults write com.apple.symbolichotkeys.plist AppleSymbolicHotKeys -dict-add 65 "
+    <dict><key>enabled</key><false/></dict>
+    "
+  notify: Restart SystemUIServer
+- name: Spotlight | Hide the Spotlight menu bar icon
+  community.general.osx_defaults:
+    domain: com.apple.Spotlight
+    key: MenuItemHidden
+    type: int
+    value: 1
+    host: currentHost
+  notify: Restart SystemUIServer

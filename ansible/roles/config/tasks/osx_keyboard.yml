@@ -1,0 +1,22 @@
+---
+- name: Check if U.S. International - PC layout is already enabled
+  ansible.builtin.command: "defaults read com.apple.HIToolbox AppleEnabledInputSources | grep 'U.S. International - PC'"
+  register: layout_check
+  changed_when: false
+  failed_when: false # A non-zero exit code means it's not found, which is not a failure
+
+- name: Add 'U.S. International - PC' to enabled keyboard layouts
+  ansible.builtin.command: >
+    defaults write com.apple.HIToolbox AppleEnabledInputSources -array-add
+    '{ "InputSourceKind" = "Keyboard Layout";
+        "KeyboardLayout ID" = 15000;
+        "KeyboardLayout Name" = "U.S. International - PC"; }'
+  when: layout_check.rc != 0 # Runs only if the layout was not found by the check
+
+- name: Set 'U.S. International - PC' as the currently selected layout
+  ansible.builtin.command: >
+    defaults write com.apple.HIToolbox AppleSelectedInputSources -array
+    '{ "InputSourceKind" = "Keyboard Layout";
+        "KeyboardLayout ID" = 15000;
+        "KeyboardLayout Name" = "U.S. International - PC"; }'
+

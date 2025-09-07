@@ -42,6 +42,8 @@ function boot_vm {
 		sleep 1
 	done
 
+    log_output "[HOST] Machine is launching on $IP_ADDRESS"
+
 	# Clean old SSH host key reference for the VM to avoid conflicts
 	ssh-keygen -R "$IP_ADDRESS" >/dev/null 2>/dev/null
 
@@ -52,7 +54,7 @@ function boot_vm {
 }
 
 function breakpoint {
-    if [ $DEBUG -eq 1 ]; then
+    if [ ${DEBUG:-0} -eq 1 ]; then
         SSHPASS=$VM_PASSWORD sshpass -e ssh -q -o ConnectTimeout=1 -o StrictHostKeyChecking=no "$VM_USERNAME@$IP_ADDRESS"
     fi
 }

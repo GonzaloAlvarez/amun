@@ -18,6 +18,13 @@
     update_homebrew: true
   when: ansible_os_family == 'Darwin'
 
+- name: Ensure the extra utilities are installed (mac)
+  community.general.homebrew_cask:
+    name: "{{ homebrew_cask_packages }}"
+    state: present
+    update_homebrew: true
+  when: ansible_os_family == 'Darwin'
+
 - name: Ensure the different utilitis are installed (linux)
   package:
     name: "{{ linux_packages }}"

@@ -11,6 +11,13 @@ homebrew_packages:
   - pinentry-mac
   - tig
   - tio
+  - dockutil
+
+homebrew_cask_packages:
+  - firefox
+  - alfred
+  - iterm2
+  - caffeine
 
 linux_packages:
   - apt-transport-https

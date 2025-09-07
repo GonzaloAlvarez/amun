@@ -1,0 +1,5 @@
+---
+- name: Restart SystemUIServer
+  listen: "Restart SystemUIServer"
+  ansible.builtin.command: killall SystemUIServer
+  changed_when: false

@@ -1,0 +1,47 @@
+---
+- name: Disable showing recent applications in the Dock
+  community.general.osx_defaults:
+    domain: com.apple.dock
+    key: show-recents
+    type: bool
+    value: false
+
+- name: Set the Dock's minimization effect to scale
+  community.general.osx_defaults:
+    domain: com.apple.dock
+    key: mineffect
+    type: string
+    value: "scale"
+
+- name: "Dock: Hide recent applications"
+  community.general.osx_defaults:
+    domain: com.apple.dock
+    key: show-recents
+    type: bool
+    value: false
+
+- name: Set the Dock's tile size
+  community.general.osx_defaults:
+    domain: com.apple.dock
+    key: tilesize
+    type: int
+    value: 36
+
+- name: Remove all dock content
+  ansible.builtin.command: "/opt/homebrew/bin/dockutil --remove all"
+  changed_when: false
+
+- name: Dock set content
+  ansible.builtin.command: "/opt/homebrew/bin/dockutil --add '{{ item }}'"
+  changed_when: false
+  loop:
+    - "/System/Applications/Messages.app/"
+    - "/Applications/Safari.app/"
+    - "/Applications/iTerm.app/"
+    - "/Applications/Firefox.app/"
+  loop_control:
+    pause: 5
+
+- name: Restart the Dock to apply changes
+  ansible.builtin.command: killall Dock
+  changed_when: false

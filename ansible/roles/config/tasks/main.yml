@@ -1,0 +1,15 @@
+---
+- name: Apply macOS specific settings
+  block:
+    - name: Include Dock settings
+      ansible.builtin.include_tasks: osx_dock.yml
+
+    - name: Include Finder settings
+      ansible.builtin.include_tasks: osx_finder.yml
+
+    - name: Include Keyboard settings
+      ansible.builtin.include_tasks: osx_keyboard.yml
+
+    - name: Include Spotlight settings
+      ansible.builtin.include_tasks: osx_spotlight.yml
+  when: ansible_os_family == "Darwin"
