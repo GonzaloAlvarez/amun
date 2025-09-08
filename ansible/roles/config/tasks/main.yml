@@ -12,4 +12,7 @@
 
     - name: Include Spotlight settings
       ansible.builtin.include_tasks: osx_spotlight.yml
+
+    - name: Include System settings
+      ansible.builtin.include_tasks: osx_system.yml
   when: ansible_os_family == "Darwin"

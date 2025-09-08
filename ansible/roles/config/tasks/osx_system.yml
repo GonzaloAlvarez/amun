@@ -1,0 +1,30 @@
+---
+- name: Set custom date and time format for the menu bar clock
+  community.general.osx_defaults:
+    domain: com.apple.menuextra.clock
+    key: DateFormat
+    type: string
+    value: "EEE d MMM HH:mm"
+
+- name: Hide Siri from the menu bar (sets StatusMenuVisible)
+  community.general.osx_defaults:
+    domain: com.apple.Siri
+    key: StatusMenuVisible
+    type: int
+    value: 0
+
+- name: Hide Siri from the menu bar (sets NSStatusItem Visible Siri)
+  community.general.osx_defaults:
+    domain: com.apple.systemuiserver
+    key: "NSStatusItem Visible Siri"
+    type: int
+    value: 0
+
+- name: Enable Dark Mode
+  community.general.osx_defaults:
+    domain: NSGlobalDomain
+    key: AppleInterfaceStyle
+    type: string
+    value: "Dark"
+  notify:
+    - Restart SystemUIServer
