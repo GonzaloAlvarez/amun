@@ -1,0 +1,23 @@
+---
+- name: Disable screen saver from activating (set idleTime to 0)
+  community.general.osx_defaults:
+    domain: com.apple.screensaver
+    key: idleTime
+    type: int
+    value: "0"
+    state: present
+  become: yes
+
+- name: Set display sleep to never when on battery
+  ansible.builtin.command: pmset -b displaysleep 0
+  changed_when: true
+  become: yes
+
+- name: Set display sleep to never when on AC power
+  ansible.builtin.command: pmset -c displaysleep 0
+  changed_when: true
+  become: yes
+
+- name: Kill cfprefsd to immediately apply preferences changes
+  ansible.builtin.command: killall cfprefsd
+  changed_when: true

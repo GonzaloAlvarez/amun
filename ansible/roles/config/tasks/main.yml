@@ -15,4 +15,7 @@
 
     - name: Include System settings
       ansible.builtin.include_tasks: osx_system.yml
+
+    - name: Include Power settings
+      ansible.builtin.include_tasks: osx_power.yml
   when: ansible_os_family == "Darwin"
