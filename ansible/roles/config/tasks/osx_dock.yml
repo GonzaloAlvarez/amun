@@ -13,7 +13,15 @@
     type: string
     value: "scale"
 
-- name: "Dock: Hide recent applications"
+- name: Disable launch animation for the Dock
+  community.general.osx_defaults:
+    domain: com.apple.dock
+    key: launchanim
+    type: bool
+    value: "false"
+    state: present
+
+- name: Hide recent applications
   community.general.osx_defaults:
     domain: com.apple.dock
     key: show-recents

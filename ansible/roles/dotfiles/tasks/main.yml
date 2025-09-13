@@ -13,6 +13,6 @@
     dest: '{{ ansible_env.HOME }}/.gear'
 
 - name: Install dotfiles
-  ansible.builtin.shell: 
+  ansible.builtin.shell:
     cmd: "./setup"
     chdir: "{{ ansible_env.HOME }}/.dotfiles/"
