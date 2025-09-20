@@ -1,24 +1,46 @@
 ---
-- name: Check if U.S. International - PC layout is already enabled
-  ansible.builtin.shell: "defaults read com.apple.HIToolbox AppleEnabledInputSources | grep 'U.S. International - PC'"
-  register: layout_check
+- name: Clone InputSourceSelector to temp dir
+  ansible.builtin.git:
+    repo: https://github.com/ershov/InputSourceSelector.git
+    dest: /tmp/InputSourceSelector
+    version: main
+    depth: 1
+
+
+- name: Check currently enabled input sources
+  ansible.builtin.command: /usr/bin/swift /tmp/InputSourceSelector/InputSourceSelector.swift list-enabled
+  register: input_sources_enabled
   changed_when: false
   failed_when: false
 
-- name: Add 'U.S. International - PC' to enabled keyboard layouts
-  ansible.builtin.command: >
-    defaults write com.apple.HIToolbox AppleEnabledInputSources -array-add
-    '{ "InputSourceKind" = "Keyboard Layout";
-        "KeyboardLayout ID" = 15000;
-        "KeyboardLayout Name" = "U.S. International - PC"; }'
-  when: layout_check.rc != 0 # Runs only if the layout was not found by the check
+- name: Enable 'U.S. International - PC' layout if not enabled
+  ansible.builtin.command: /usr/bin/swift /tmp/InputSourceSelector/InputSourceSelector.swift enable com.apple.keylayout.USInternational-PC
+  when: "'com.apple.keylayout.USInternational-PC' not in input_sources_enabled.stdout"
 
-- name: Set 'U.S. International - PC' as the currently selected layout
-  ansible.builtin.command: >
-    defaults write com.apple.HIToolbox AppleSelectedInputSources -array
-    '{ "InputSourceKind" = "Keyboard Layout";
-        "KeyboardLayout ID" = 15000;
-        "KeyboardLayout Name" = "U.S. International - PC"; }'
+- name: Check current input source
+  ansible.builtin.command: /usr/bin/swift /tmp/InputSourceSelector/InputSourceSelector.swift current
+  register: current_input_source
+  changed_when: false
+  failed_when: false
+
+- name: Select 'U.S. International - PC' layout if not current
+  ansible.builtin.command: /usr/bin/swift /tmp/InputSourceSelector/InputSourceSelector.swift select com.apple.keylayout.USInternational-PC
+  when: "'com.apple.keylayout.USInternational-PC' not in current_input_source.stdout"
+
+- name: Refresh enabled input sources list
+  ansible.builtin.command: /usr/bin/swift /tmp/InputSourceSelector/InputSourceSelector.swift list-enabled
+  register: input_sources_enabled_after
+  changed_when: false
+  failed_when: false
+
+- name: Disable 'U.S.' keyboard layout if enabled
+  ansible.builtin.command: /usr/bin/swift /tmp/InputSourceSelector/InputSourceSelector.swift disable com.apple.keylayout.US
+  when: "'com.apple.keylayout.US' in input_sources_enabled_after.stdout"
+
+- name: Remove InputSourceSelector repository from temp dir
+  ansible.builtin.file:
+    path: /tmp/InputSourceSelector
+    state: absent
 
 - name: Disable automatic spelling correction
   community.general.osx_defaults:
