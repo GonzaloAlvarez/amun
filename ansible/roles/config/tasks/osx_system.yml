@@ -20,6 +20,13 @@
     type: int
     value: 0
 
+- name: Disable language indicator in the menu bar for input methods
+  community.general.osx_defaults:
+    domain: kCFPreferencesAnyApplication
+    key: TSMLanguageIndicatorEnabled
+    type: int
+    value: "0"
+
 - name: Enable Dark Mode
   community.general.osx_defaults:
     domain: NSGlobalDomain

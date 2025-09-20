@@ -38,7 +38,7 @@ function boot_vm {
 	log_output "[HOST] Waiting for VM to boot"
 	IP_ADDRESS=$(tart ip "$INSTANCE_NAME" 2>/dev/null)
 	until [[ "$IP_ADDRESS" =~ ^([0-9]+\.){3}[0-9]+$ ]]; do
-		IP_ADDRESS=$(tart ip "$INSTANCE_NAME")
+		IP_ADDRESS=$(tart ip "$INSTANCE_NAME" 2>/dev/null)
 		sleep 1
 	done
 

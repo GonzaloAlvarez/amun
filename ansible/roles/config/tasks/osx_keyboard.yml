@@ -1,9 +1,9 @@
 ---
 - name: Check if U.S. International - PC layout is already enabled
-  ansible.builtin.command: "defaults read com.apple.HIToolbox AppleEnabledInputSources | grep 'U.S. International - PC'"
+  ansible.builtin.shell: "defaults read com.apple.HIToolbox AppleEnabledInputSources | grep 'U.S. International - PC'"
   register: layout_check
   changed_when: false
-  failed_when: false # A non-zero exit code means it's not found, which is not a failure
+  failed_when: false
 
 - name: Add 'U.S. International - PC' to enabled keyboard layouts
   ansible.builtin.command: >
@@ -20,3 +20,18 @@
         "KeyboardLayout ID" = 15000;
         "KeyboardLayout Name" = "U.S. International - PC"; }'
 
+- name: Disable automatic spelling correction
+  community.general.osx_defaults:
+    domain: NSGlobalDomain
+    key: NSAutomaticSpellingCorrectionEnabled
+    type: bool
+    value: "false"
+    state: present
+
+- name: Disable automatic word capitalization
+  community.general.osx_defaults:
+    domain: NSGlobalDomain
+    key: NSAutomaticCapitalizeWords
+    type: bool
+    value: "false"
+    state: present
