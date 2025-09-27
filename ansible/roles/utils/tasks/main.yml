@@ -3,6 +3,8 @@
   apt:
     upgrade: full
     update_cache: yes
+    allow_downgrade: yes
+    autoclean: yes
     autoremove: yes
   become: true
   retries: 5
