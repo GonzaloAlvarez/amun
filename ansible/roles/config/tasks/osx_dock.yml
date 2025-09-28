@@ -35,12 +35,27 @@
     type: int
     value: 36
 
+- name: Check for dockutil in /usr/local/bin
+  ansible.builtin.stat:
+    path: /usr/local/bin/dockutil
+  register: dockutil_local_bin
+
+- name: Check for dockutil in /opt/homebrew/bin
+  ansible.builtin.stat:
+    path: /opt/homebrew/bin/dockutil
+  register: dockutil_homebrew_bin
+
+- name: Set dockutil_path fact
+  ansible.builtin.set_fact:
+    dockutil_path: "{{ '/usr/local/bin/dockutil' if dockutil_local_bin.stat.exists else ('/opt/homebrew/bin/dockutil' if dockutil_homebrew_bin.stat.exists else '') }}"
+
+
 - name: Remove all dock content
-  ansible.builtin.command: "/opt/homebrew/bin/dockutil --remove all"
+  ansible.builtin.command: "{{ dockutil_path }} --remove all"
   changed_when: false
 
 - name: Dock set content
-  ansible.builtin.command: "/opt/homebrew/bin/dockutil --add '{{ item }}'"
+  ansible.builtin.command: "{{ dockutil_path }} --add '{{ item }}'"
   changed_when: false
   loop:
     - "/System/Applications/Messages.app/"
