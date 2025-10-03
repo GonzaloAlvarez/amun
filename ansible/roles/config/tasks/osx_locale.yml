@@ -1,0 +1,24 @@
+---
+- name: Set timezone
+  ansible.builtin.command: systemsetup -settimezone {{ config_timezone }}
+  become: true
+  changed_when: false
+  failed_when: false
+
+- name: Set network time server
+  ansible.builtin.command: systemsetup -setnetworktimeserver {{ config_network_time_server }}
+  become: true
+  changed_when: false
+  failed_when: false
+
+- name: Set temperature units
+  ansible.builtin.command: defaults write NSGlobalDomain AppleTemperatureUnit -string "{{ config_temperature_unit }}"
+
+- name: Enable 24-hour time on macOS
+  community.general.osx_defaults:
+    domain: NSGlobalDomain  # -g corresponds to NSGlobalDomain
+    key: AppleICUForce24HourTime
+    type: bool
+    value: true
+    state: present
+  notify: Restart SystemUIServer

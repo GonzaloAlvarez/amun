@@ -10,6 +10,9 @@
     - name: Include Keyboard settings
       ansible.builtin.include_tasks: osx_keyboard.yml
 
+    - name: Include Locale settings
+      ansible.builtin.include_tasks: osx_locale.yml
+
     - name: Include Spotlight settings
       ansible.builtin.include_tasks: osx_spotlight.yml
 

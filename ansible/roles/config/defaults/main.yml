@@ -1,2 +1,6 @@
 ---
 # defaults file for config
+
+config_timezone: America/New_York
+config_network_time_server: time.nist.gov
+config_temperature_unit: Celsius
