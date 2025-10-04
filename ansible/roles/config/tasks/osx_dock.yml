@@ -28,13 +28,6 @@
     type: bool
     value: false
 
-- name: Set the Dock's tile size
-  community.general.osx_defaults:
-    domain: com.apple.dock
-    key: tilesize
-    type: int
-    value: 36
-
 - name: Check for dockutil in /usr/local/bin
   ansible.builtin.stat:
     path: /usr/local/bin/dockutil
