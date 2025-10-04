@@ -20,7 +20,7 @@ You can bootstrap **amun** into your environment with a single command.
 This will automatically fetch and execute the bootstrap script to prepare your workspace:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gonzaloalvarez/amun/main/bootstrap/bootstrap.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/gonzaloalvarez/amun/main/bootstrap)
 ```
 
 ## Features
