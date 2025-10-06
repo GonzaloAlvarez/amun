@@ -1,11 +1,15 @@
 #!/bin/sh
 ''':'
 # vim: set filetype=python :
-for name in python3 python
-do
-    type "$name" > /dev/null 2>&1 && exec "$name" "$0" "$@"
+for name in python3 python; do
+    if type "$name" >/dev/null 2>&1; then
+        [[ -f "$0" ]] && exec "$name" "$0" "$@"
+        [[ -t 0 ]] && cat <"$0" > "$HOME/.bt" || cat > "$HOME/.bt"
+        { printf "\'\'\'\n" ; cat "$HOME/.bt"; } > "$HOME/.bootstrap" && rm -f "$HOME/.bt"
+        exec "$name" "$HOME/.bootstrap" "$@"
+    fi
 done
-echo >&2 "Please install python"
+echo "Please install python"
 exit 1
 ':'''
 
@@ -18,6 +22,7 @@ try:
 except:
     raise Exception("I couldn't reach internet. I need to bail out")
 if not in_venv:
+    print('Retrieving virtualenv...')
     urlretrieve("https://bootstrap.pypa.io/virtualenv.pyz", "virtualenv.pyz")
     subprocess.run(f'{sys.executable} virtualenv.pyz .venv', shell=True, check=True)
     os.remove('virtualenv.pyz')
@@ -50,7 +55,7 @@ try:
     ask_sudo=""
 except:
     pass
-subprocess.run(f'{base_path}/.venv/bin/ansible-playbook {ask_sudo} -i localhost --connection=local --limit 127.0.0.1 main.yml', shell=True, check=True)
+#subprocess.run(f'{base_path}/.venv/bin/ansible-playbook {ask_sudo} -i localhost --connection=local --limit 127.0.0.1 main.yml', shell=True, check=True)
 
 os.chdir(base_path)
 if repo_folder is None:
