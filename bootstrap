@@ -47,7 +47,7 @@ else:
         shutil.copytree(repo_folder, provisioning_folder)
 
 base_path = os.getcwd()
-os.chdir((provisioning_folder / "ansible"))
+os.chdir((provisioning_folder))
 subprocess.run(f'{base_path}/.venv/bin/ansible-galaxy install -r requirements.yml', shell=True, check=True)
 ask_sudo="-K"
 try:
