@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 ''':'
 # vim: set filetype=python :
 for name in python3 python; do

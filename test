@@ -87,5 +87,5 @@ function test_debian {
     shutdown
 }
 
-test_sequoia
-test_debian
+if [[ $# -eq 0 || "$1" == "mac" || "$1" == "sequoia" ]]; then test_sequoia; fi
+if [[ $# -eq 0 || "$1" == "linux" || "$1" == "debian" ]]; then test_debian; fi
