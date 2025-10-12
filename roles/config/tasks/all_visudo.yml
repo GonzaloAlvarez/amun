@@ -1,0 +1,24 @@
+---
+- name: Get current username
+  command: id -un
+  register: current_user_result
+  changed_when: false
+
+- name: Set current_user fact
+  set_fact:
+    current_user: "{{ current_user_result.stdout }}"
+
+- name: Check if user is already in sudoers
+  command: "sudo grep -q '{{ current_user }} ALL=(ALL) NOPASSWD: ALL' /etc/sudoers"
+  register: sudoers_check
+  failed_when: false
+  changed_when: false
+
+- name: Add user to sudoers with NOPASSWD if not already present
+  lineinfile:
+    path: /etc/sudoers
+    line: "{{ current_user }} ALL=(ALL) NOPASSWD: ALL"
+    validate: /usr/sbin/visudo -cf %s
+    state: present
+  become: true
+  when: sudoers_check.rc != 0

@@ -1,4 +1,6 @@
 ---
+- name: Include visudo configuration
+  ansible.builtin.include_tasks: all_visudo.yml
 - name: Apply macOS specific settings
   block:
     - name: Include Dock settings
