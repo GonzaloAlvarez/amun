@@ -1,0 +1,3 @@
+---
+- name: Include visudo configuration
+  ansible.builtin.include_tasks: all_visudo.yml
