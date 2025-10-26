@@ -78,9 +78,9 @@ function test_debian {
     ssh_command sudo mkdir /mnt/shared
     ssh_command sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
     ssh_command sudo systemctl stop unattended-upgrades
-#    ssh_command cp "/mnt/shared/amun/bootstrap" "~/bootstrap"
-#    ssh_command chmod +x "~/bootstrap"
-#    ssh_command "AMUN_REPO='/mnt/shared/amun' ./bootstrap"
+    ssh_command cp "/mnt/shared/amun/bootstrap" "~/bootstrap"
+    ssh_command chmod +x "~/bootstrap"
+    ssh_command "AMUN_REPO='/mnt/shared/amun' ./bootstrap"
 
     breakpoint
 
