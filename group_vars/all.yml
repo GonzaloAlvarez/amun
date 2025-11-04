@@ -18,6 +18,7 @@ homebrew_cask_packages:
   - alfred
   - iterm2
   - caffeine
+  - font-jetbrains-mono-nerd-font
 
 linux_packages:
   - apt-transport-https

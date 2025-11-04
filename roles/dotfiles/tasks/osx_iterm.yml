@@ -1,0 +1,20 @@
+---
+- name: Create DynamicProfiles directory if it doesn't exist
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/Library/Application Support/iTerm2/DynamicProfiles"
+    state: directory
+    mode: '0755'
+
+- name: Copy profile JSON to DynamicProfiles directory
+  ansible.builtin.copy:
+    src: "{{ ansible_env.HOME }}/.dotfiles/iterm/Profiles.json"
+    dest: "{{ ansible_env.HOME }}/Library/Application Support/iTerm2/DynamicProfiles/BlackBeast.json"
+    remote_src: yes
+
+
+- name: Set the new profile as default
+  community.general.osx_defaults:
+    domain: com.googlecode.iterm2.plist
+    key: "Default Bookmark Guid"
+    type: string
+    value: "D6E08B37-2920-44BE-A079-C9962B013B42"
