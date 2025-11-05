@@ -43,4 +43,4 @@ linux_packages:
   - python3-setuptools
   - neovim
   - net-tools
-
+  - kbd

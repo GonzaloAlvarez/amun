@@ -27,4 +27,7 @@
   block:
     - name: Include locale settings
       ansible.builtin.include_tasks: lnx_locale.yml
+
+    - name: Include keyboard configuration
+      ansible.builtin.include_tasks: lnx_keyboard.yml
   when: ansible_os_family != 'Darwin'

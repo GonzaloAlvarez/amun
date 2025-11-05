@@ -1,0 +1,20 @@
+---
+- name: Configure keyboard layout
+  ansible.builtin.lineinfile:
+    path: /etc/default/keyboard
+    regexp: '^XKBLAYOUT='
+    line: 'XKBLAYOUT="us"'
+    create: yes
+  become: true
+
+- name: Set keyboard variant to international
+  ansible.builtin.lineinfile:
+    path: /etc/default/keyboard
+    regexp: '^XKBVARIANT='
+    line: 'XKBVARIANT="intl"'
+    create: yes
+  become: true
+
+- name: Apply keyboard configuration
+  ansible.builtin.command: setupcon
+  become: true
