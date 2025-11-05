@@ -1,0 +1,38 @@
+---
+- name: Set locale to en_US.UTF-8
+  ansible.builtin.lineinfile:
+    path: /etc/locale.gen
+    regexp: '^# en_US.UTF-8 UTF-8'
+    line: 'en_US.UTF-8 UTF-8'
+    state: present
+  become: yes
+  notify:
+    - Generate locales
+
+- name: Set default locale
+  ansible.builtin.copy:
+    content: |
+      LANG=en_US.UTF-8
+      LC_CTYPE=en_US
+    dest: /etc/locale.conf
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  when: ansible_os_family == "Archlinux"
+
+- name: Set default locale (Debian/Ubuntu)
+  ansible.builtin.copy:
+    content: |
+      LANG=en_US.UTF-8
+      LANGUAGE=en_US:en
+      LC_CTYPE=en_US.UTF-8
+    dest: /etc/default/locale
+    owner: root
+    group: root
+    mode: '0644'
+  become: yes
+  when: ansible_os_family == "Debian"
+
+- name: Handlers for locale generation
+  ansible.builtin.meta: flush_handlers

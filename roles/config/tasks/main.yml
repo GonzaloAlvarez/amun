@@ -22,3 +22,9 @@
     - name: Include Power settings
       ansible.builtin.include_tasks: osx_power.yml
   when: ansible_os_family == "Darwin"
+
+- name: Apply linux specific settings
+  block:
+    - name: Include locale settings
+      ansible.builtin.include_tasks: lnx_locale.yml
+  when: ansible_os_family != 'Darwin'

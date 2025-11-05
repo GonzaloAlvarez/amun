@@ -3,3 +3,8 @@
   listen: "Restart SystemUIServer"
   ansible.builtin.command: killall SystemUIServer
   changed_when: false
+
+- name: Generate locales
+  ansible.builtin.command: locale-gen
+  become: yes
+  listen: "Generate locales"
