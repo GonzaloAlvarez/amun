@@ -22,6 +22,11 @@ This will automatically fetch and execute the bootstrap script to prepare your w
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/gonzaloalvarez/amun/main/bootstrap)
 ```
+or, if you are a bare debian install without curl, you can use:
+
+```bash    
+bash <(wget -qO- https://raw.githubusercontent.com/gonzaloalvarez/amun/main/bootstrap)
+```
 
 ## Features
 
