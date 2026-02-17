@@ -44,3 +44,16 @@ linux_packages:
   - neovim
   - net-tools
   - kbd
+
+arch_packages:
+  - base-devel
+  - curl
+  - git
+  - gnupg
+  - neovim
+  - openssh
+  - python
+  - python-pip
+  - rsync
+  - sudo
+  - unzip

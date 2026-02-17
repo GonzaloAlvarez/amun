@@ -32,4 +32,18 @@
     name: "{{ linux_packages }}"
     state: present
   become: true
-  when: ansible_os_family != 'Darwin'
+  when: ansible_os_family == 'Debian'
+
+- name: Update packages (Arch)
+  community.general.pacman:
+    update_cache: yes
+    upgrade: yes
+  become: true
+  when: ansible_os_family == 'Archlinux'
+
+- name: Install packages (Arch)
+  community.general.pacman:
+    name: "{{ arch_packages }}"
+    state: present
+  become: true
+  when: ansible_os_family == 'Archlinux'

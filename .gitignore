@@ -1,1 +1,8 @@
 .aider*
+tst/archlinuxarm.qcow2
+tst/arch-linux-aarch64.iso
+tst/edk2-aarch64-code.fd
+tst/edk2-aarch64-vars.fd
+tst/ssh_key.pem
+tst/test_key
+tst/test_key.pub
