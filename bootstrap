@@ -55,7 +55,7 @@ try:
     ask_sudo=""
 except:
     pass
-subprocess.run(f'{base_path}/.venv/bin/ansible-playbook {ask_sudo} -i localhost --connection=local --limit 127.0.0.1 main.yml', shell=True, check=True)
+subprocess.run(f'{base_path}/.venv/bin/ansible-playbook {ask_sudo} -i localhost --connection=local --limit 127.0.0.1 -e ansible_python_interpreter=auto_silent main.yml', shell=True, check=True)
 
 os.chdir(base_path)
 if repo_folder is None:
