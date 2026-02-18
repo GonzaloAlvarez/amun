@@ -21,7 +21,7 @@
 
     - name: Include Power settings
       ansible.builtin.include_tasks: osx_power.yml
-  when: ansible_os_family == "Darwin"
+  when: ansible_facts['os_family'] == "Darwin"
 
 - name: Apply linux specific settings
   block:
@@ -30,4 +30,4 @@
 
     - name: Include keyboard configuration
       ansible.builtin.include_tasks: lnx_keyboard.yml
-  when: ansible_os_family != 'Darwin'
+  when: ansible_facts['os_family'] != 'Darwin'

@@ -153,11 +153,59 @@ echo 1 >>/tmp/.fstab
 _chroot_mount
 mkdir -p "${_DESTDIR}/var/cache/pacman/pkg"
 mkdir -p "${_DESTDIR}/var/lib/pacman"
+
+# Pre-flight checks
+echo "Checking disk space before installation..."
+df -h /mnt/install | tail -1
+echo "Checking network connectivity..."
+if ! ping -c 1 mirror.archlinuxarm.org &>/dev/null; then
+    echo "WARNING: Cannot reach mirror.archlinuxarm.org, installation may fail"
+fi
+
 echo "Installing base git python iptables-nft kmscon linux polkit btrfs-progs e2fsprogs dosfstools terminus-font ttf-hack-nerd..."
 sleep 2
-pacman --root /mnt/install --cachedir=/mnt/install/var/cache/pacman/pkg --noconfirm -Sy base git python iptables-nft kmscon linux polkit btrfs-progs e2fsprogs dosfstools terminus-font ttf-hack-nerd &>"${_LOG}"
+
+# Retry pacman installation up to 3 times
+RETRY_COUNT=0
+MAX_RETRIES=3
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if pacman --root /mnt/install --cachedir=/mnt/install/var/cache/pacman/pkg --noconfirm -Sy base git python iptables-nft kmscon linux polkit btrfs-progs e2fsprogs dosfstools terminus-font ttf-hack-nerd &>"${_LOG}"; then
+        echo "Base installation completed successfully"
+        break
+    else
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        echo "ERROR: Base pacman installation attempt $RETRY_COUNT of $MAX_RETRIES failed!"
+        echo "Last 20 lines of ${_LOG}:"
+        tail -20 "${_LOG}" || true
+
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+            echo "Retrying in 5 seconds..."
+            sleep 5
+        else
+            echo "FATAL: Base pacman installation failed after $MAX_RETRIES attempts"
+            echo "Full log contents:"
+            cat "${_LOG}" || true
+            exit 1
+        fi
+    fi
+done
+
+echo "Syncing filesystems..."
 sync
 sleep 3
+sync
+echo "Verifying critical files were installed..."
+for file in /mnt/install/etc/locale.gen /mnt/install/etc/kmscon/kmscon.conf.example /mnt/install/etc/mkinitcpio.conf /mnt/install/etc/default/useradd; do
+    if [ ! -f "$file" ]; then
+        echo "ERROR: Expected file $file is missing after base installation!"
+        echo "Contents of /mnt/install/etc:"
+        ls -la /mnt/install/etc/ || true
+        echo "Full log contents:"
+        cat "${_LOG}" || true
+        exit 1
+    fi
+done
+echo "All critical files verified, proceeding..."
 _chroot_umount
 sleep 3
 ### autoconfiguration
@@ -192,21 +240,39 @@ echo "Enable pacman's GPG keyring files on installed system..."
 cp -ar /etc/pacman.d/gnupg "${_DESTDIR}"/etc/pacman.d &>"${_NO_LOG}"
 echo "Enable pacman mirror on installed system..."
 echo 'Server = http://mirror.archlinuxarm.org/$arch/$repo' >> "${_DESTDIR}/etc/pacman.d/mirrorlist"
-cp "${_DESTDIR}"/etc/kmscon/kmscon.conf.example "${_DESTDIR}"/etc/kmscon/kmscon.conf
-rm "${_DESTDIR}"/etc/systemd/system/getty.target.wants/getty@tty1.service
+echo "Configuring kmscon..."
+if [ -f "${_DESTDIR}/etc/kmscon/kmscon.conf.example" ]; then
+    cp "${_DESTDIR}"/etc/kmscon/kmscon.conf.example "${_DESTDIR}"/etc/kmscon/kmscon.conf
+else
+    echo "WARNING: kmscon.conf.example not found, skipping kmscon configuration"
+fi
+if [ -f "${_DESTDIR}/etc/systemd/system/getty.target.wants/getty@tty1.service" ]; then
+    rm "${_DESTDIR}"/etc/systemd/system/getty.target.wants/getty@tty1.service
+fi
 echo "Setting keymap,font and kmscon on installed system..."
 cp /etc/vconsole.conf "${_DESTDIR}"/etc/vconsole.conf
-ln -s /usr/lib/systemd/system/kmsconvt@.service "${_DESTDIR}"/etc/systemd/system/autovt@.service
-ln -s /usr/lib/systemd/system/kmsconvt@.service "${_DESTDIR}"/etc/systemd/system/getty.target.wants/kmsconvt@tty1.service
-sd '^#hwaccel' 'hwaccel' "${_DESTDIR}"/etc/kmscon/kmscon.conf
+ln -sf /usr/lib/systemd/system/kmsconvt@.service "${_DESTDIR}"/etc/systemd/system/autovt@.service
+ln -sf /usr/lib/systemd/system/kmsconvt@.service "${_DESTDIR}"/etc/systemd/system/getty.target.wants/kmsconvt@tty1.service
+if [ -f "${_DESTDIR}/etc/kmscon/kmscon.conf" ]; then
+    sd '^#hwaccel' 'hwaccel' "${_DESTDIR}"/etc/kmscon/kmscon.conf
+fi
 echo "Set default hostname on installed system..."
 echo "myhostname" > "${_DESTDIR}"/etc/hostname
 echo "Set default locale on installed system..."
 cp /etc/locale.conf "${_DESTDIR}"/etc/locale.conf
 echo "Enable glibc locales based on locale.conf on installed system..."
-sd "^#en_US" "en_US" "${_DESTDIR}"/etc/locale.gen
+if [ -f "${_DESTDIR}/etc/locale.gen" ]; then
+    sd "^#en_US" "en_US" "${_DESTDIR}"/etc/locale.gen
+else
+    echo "ERROR: /etc/locale.gen not found after base installation!"
+    exit 1
+fi
 echo "Setup bash with custom options on installed system..."
-cp "${_DESTDIR}"/etc/skel/.bash* "${_DESTDIR}"/root/
+if compgen -G "${_DESTDIR}/etc/skel/.bash*" > /dev/null; then
+    cp "${_DESTDIR}"/etc/skel/.bash* "${_DESTDIR}"/root/
+else
+    echo "WARNING: No .bash* files found in /etc/skel, skipping"
+fi
 _chroot_umount
 echo "Rebuilding glibc locales on installed system..."
 systemd-nspawn -q -D /mnt/install locale-gen &>"${_NO_LOG}"
@@ -214,15 +280,40 @@ systemd-nspawn -q -D /mnt/install locale-gen &>"${_NO_LOG}"
 ### pacman installation
 _chroot_mount
 echo "Installing neovim, sudo, openssh..."
-pacman --root /mnt/install --cachedir=/mnt/install/var/cache/pacman/pkg --noconfirm -Sy neovim sudo openssh &>"${_LOG}"
+RETRY_COUNT=0
+MAX_RETRIES=3
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if pacman --root /mnt/install --cachedir=/mnt/install/var/cache/pacman/pkg --noconfirm -Sy neovim sudo openssh &>"${_LOG}"; then
+        echo "neovim/sudo/openssh installation completed successfully"
+        break
+    else
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        echo "ERROR: neovim/sudo/openssh installation attempt $RETRY_COUNT of $MAX_RETRIES failed!"
+        echo "Last 10 lines of ${_LOG}:"
+        tail -10 "${_LOG}" || true
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+            echo "Retrying in 3 seconds..."
+            sleep 3
+        else
+            echo "FATAL: neovim/sudo/openssh installation failed after $MAX_RETRIES attempts"
+            exit 1
+        fi
+    fi
+done
 sync
+sleep 2
 chroot "${_DESTDIR}" systemctl enable sshd &>"${_NO_LOG}"
 _chroot_umount
 
 ### hwdetect
 echo "Preconfiguring mkinitcpio settings on installed system..."
-sd "^MODULES=.*" "MODULES=(ext4 btrfs vfat crc32c)" "${_DESTDIR}"/etc/mkinitcpio.conf
-sd "^HOOKS=.*" "HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block filesystems fsck)" "${_DESTDIR}"/etc/mkinitcpio.conf
+if [ -f "${_DESTDIR}/etc/mkinitcpio.conf" ]; then
+    sd "^MODULES=.*" "MODULES=(ext4 btrfs vfat crc32c)" "${_DESTDIR}"/etc/mkinitcpio.conf
+    sd "^HOOKS=.*" "HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block filesystems fsck)" "${_DESTDIR}"/etc/mkinitcpio.conf
+else
+    echo "ERROR: /etc/mkinitcpio.conf not found after base installation!"
+    exit 1
+fi
 
 ### mkinitcpio
 _chroot_mount
@@ -233,14 +324,39 @@ _chroot_umount
 ### pacman installation
 _chroot_mount
 echo "Installing bash-completion..."
-pacman --root /mnt/install --cachedir=/mnt/install/var/cache/pacman/pkg --noconfirm -Sy bash-completion &>"${_LOG}"
+RETRY_COUNT=0
+MAX_RETRIES=3
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if pacman --root /mnt/install --cachedir=/mnt/install/var/cache/pacman/pkg --noconfirm -Sy bash-completion &>"${_LOG}"; then
+        echo "bash-completion installation completed successfully"
+        break
+    else
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        echo "ERROR: bash-completion installation attempt $RETRY_COUNT of $MAX_RETRIES failed!"
+        echo "Last 10 lines of ${_LOG}:"
+        tail -10 "${_LOG}" || true
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+            echo "Retrying in 3 seconds..."
+            sleep 3
+        else
+            echo "FATAL: bash-completion installation failed after $MAX_RETRIES attempts"
+            exit 1
+        fi
+    fi
+done
 sync
+sleep 2
 _chroot_umount
 
 ### default shell
-sd '^SHELL=.*' "SHELL=/usr/bin/bash" "${_DESTDIR}"/etc/default/useradd
-usermod -R "${_DESTDIR}" -s "/usr/bin/bash" "root" &>"${_LOG}"
-echo "Default shell set to bash."
+if [ -f "${_DESTDIR}/etc/default/useradd" ]; then
+    sd '^SHELL=.*' "SHELL=/usr/bin/bash" "${_DESTDIR}"/etc/default/useradd
+    usermod -R "${_DESTDIR}" -s "/usr/bin/bash" "root" &>"${_LOG}"
+    echo "Default shell set to bash."
+else
+    echo "ERROR: /etc/default/useradd not found after base installation!"
+    exit 1
+fi
 
 ### set user password
 echo "archboot" > /tmp/.password
@@ -331,14 +447,48 @@ echo "" >> /mnt/install/etc/hosts
 ### pacman installation
 _chroot_mount
 echo "Installing efivar efibootmgr..."
-pacman --root /mnt/install --cachedir=/mnt/install/var/cache/pacman/pkg --noconfirm -Sy efivar efibootmgr &>"${_LOG}"
+RETRY_COUNT=0
+MAX_RETRIES=3
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if pacman --root /mnt/install --cachedir=/mnt/install/var/cache/pacman/pkg --noconfirm -Sy efivar efibootmgr &>"${_LOG}"; then
+        echo "efivar/efibootmgr installation completed successfully"
+        break
+    else
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        echo "ERROR: efivar/efibootmgr installation attempt $RETRY_COUNT of $MAX_RETRIES failed!"
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+            echo "Retrying in 3 seconds..."
+            sleep 3
+        else
+            echo "FATAL: efivar/efibootmgr installation failed after $MAX_RETRIES attempts"
+            exit 1
+        fi
+    fi
+done
 sync
 _chroot_umount
 
 ### pacman installation
 _chroot_mount
 echo "Installing grub..."
-pacman --root /mnt/install --cachedir=/mnt/install/var/cache/pacman/pkg --noconfirm -Sy grub &>"${_LOG}"
+RETRY_COUNT=0
+MAX_RETRIES=3
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if pacman --root /mnt/install --cachedir=/mnt/install/var/cache/pacman/pkg --noconfirm -Sy grub &>"${_LOG}"; then
+        echo "grub installation completed successfully"
+        break
+    else
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        echo "ERROR: grub installation attempt $RETRY_COUNT of $MAX_RETRIES failed!"
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+            echo "Retrying in 3 seconds..."
+            sleep 3
+        else
+            echo "FATAL: grub installation failed after $MAX_RETRIES attempts"
+            exit 1
+        fi
+    fi
+done
 sync
 _chroot_umount
 

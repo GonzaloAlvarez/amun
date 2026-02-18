@@ -2,7 +2,7 @@
 - hosts: all
   roles:
     - { role: permissions, become: false }
-    - { role: homebrew, become: false, when: "ansible_system == 'Darwin'" }
+    - { role: homebrew, become: false, when: "ansible_facts['system'] == 'Darwin'" }
     - { role: utils, become: false }
     - { role: dotfiles, become: false }
     - { role: config, become: false }

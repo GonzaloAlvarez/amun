@@ -19,7 +19,7 @@
     group: root
     mode: '0644'
   become: yes
-  when: ansible_os_family == "Archlinux"
+  when: ansible_facts['os_family'] == "Archlinux"
 
 - name: Set default locale (Debian/Ubuntu)
   ansible.builtin.copy:
@@ -32,7 +32,7 @@
     group: root
     mode: '0644'
   become: yes
-  when: ansible_os_family == "Debian"
+  when: ansible_facts['os_family'] == "Debian"
 
 - name: Handlers for locale generation
   ansible.builtin.meta: flush_handlers

@@ -1,20 +1,30 @@
 ---
-- name: Configure keyboard layout
+# Debian-specific keyboard configuration
+- name: Configure keyboard layout (Debian)
   ansible.builtin.lineinfile:
     path: /etc/default/keyboard
     regexp: '^XKBLAYOUT='
     line: 'XKBLAYOUT="us"'
     create: yes
   become: true
+  when: ansible_facts['os_family'] == 'Debian'
 
-- name: Set keyboard variant to international
+- name: Set keyboard variant to international (Debian)
   ansible.builtin.lineinfile:
     path: /etc/default/keyboard
     regexp: '^XKBVARIANT='
     line: 'XKBVARIANT="intl"'
     create: yes
   become: true
+  when: ansible_facts['os_family'] == 'Debian'
 
-- name: Apply keyboard configuration
+- name: Apply keyboard configuration (Debian)
   ansible.builtin.command: setupcon
   become: true
+  when: ansible_facts['os_family'] == 'Debian'
+
+# Arch Linux keyboard configuration
+- name: Set keyboard layout (Arch)
+  ansible.builtin.command: localectl set-x11-keymap us "" intl
+  become: true
+  when: ansible_facts['os_family'] == 'Archlinux'

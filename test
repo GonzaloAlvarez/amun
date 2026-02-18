@@ -162,14 +162,14 @@ function test_arch {
 
     log_output "[HOST] Creating tarball of amun repository"
     local SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-    tar -czf /tmp/amun.tar.gz -C "$(dirname "$SCRIPT_DIR")" "$(basename "$SCRIPT_DIR")"
+    tar --no-xattrs -czf /tmp/amun.tar.gz -C "$(dirname "$SCRIPT_DIR")" "$(basename "$SCRIPT_DIR")"
 
     log_output "[HOST] Transferring repository to Arch VM"
     qemu_ssh_command "mkdir -p /home/archboot/.amun"
     qemu_scp /tmp/amun.tar.gz /home/archboot/.amun/amun.tar.gz
 
     log_output "[HOST] Extracting repository and running bootstrap"
-    qemu_ssh_command "cd /home/archboot/.amun && tar -xzf amun.tar.gz && rm -f amun.tar.gz"
+    qemu_ssh_command "cd /home/archboot/.amun && tar --warning=no-unknown-keyword -xzf amun.tar.gz && rm -f amun.tar.gz"
     qemu_ssh_command "cp /home/archboot/.amun/amun/bootstrap ~/bootstrap && chmod +x ~/bootstrap"
     qemu_ssh_command "AMUN_REPO='/home/archboot/.amun/amun' ./bootstrap"
 

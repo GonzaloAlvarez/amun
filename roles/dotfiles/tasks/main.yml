@@ -5,18 +5,18 @@
 - name: Download dotfiles
   git:
     repo: "https://github.com/GonzaloAlvarez/dotfiles.git"
-    dest: "{{ ansible_env.HOME }}/.dotfiles"
+    dest: "{{ ansible_facts['env'].HOME }}/.dotfiles"
 
 - name: Download gear repo
   git:
     repo: 'https://github.com/GonzaloAlvarez/gear.git'
-    dest: '{{ ansible_env.HOME }}/.gear'
+    dest: '{{ ansible_facts["env"].HOME }}/.gear'
 
 - name: Install dotfiles
   ansible.builtin.shell:
     cmd: "./setup"
-    chdir: "{{ ansible_env.HOME }}/.dotfiles/"
+    chdir: "{{ ansible_facts['env'].HOME }}/.dotfiles/"
 
 - name: Execute osx specific tasks
   ansible.builtin.include_tasks: osx_iterm.yml
-  when: ansible_os_family == "Darwin"
+  when: ansible_facts['os_family'] == "Darwin"
