@@ -57,3 +57,5 @@ arch_packages:
   - rsync
   - sudo
   - unzip
+
+neovim_min_version: "0.11.2"

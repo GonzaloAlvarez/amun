@@ -1,0 +1,147 @@
+---
+- name: Check if neovim is installed
+  command: nvim --version
+  register: nvim_version_check
+  failed_when: false
+  changed_when: false
+
+- name: Extract neovim version
+  set_fact:
+    nvim_current_version: "{{ nvim_version_check.stdout_lines[0] | regex_search('v([0-9]+\\.[0-9]+\\.[0-9]+)', '\\1') | first }}"
+  when: nvim_version_check.rc == 0
+
+- name: Set neovim version to 0.0.0 if not installed
+  set_fact:
+    nvim_current_version: "0.0.0"
+  when: nvim_version_check.rc != 0
+
+- name: Display current neovim version
+  debug:
+    msg: "Current neovim version: {{ nvim_current_version }}, minimum required: {{ neovim_min_version }}"
+
+- name: Upgrade neovim if version is below minimum
+  block:
+    - name: Get latest neovim release from GitHub
+      uri:
+        url: https://api.github.com/repos/neovim/neovim/releases/latest
+        return_content: yes
+      register: neovim_latest_release
+
+    - name: Extract latest version tag
+      set_fact:
+        neovim_latest_version: "{{ neovim_latest_release.json.tag_name }}"
+
+    - name: Display version to be installed
+      debug:
+        msg: "Will install neovim {{ neovim_latest_version }}"
+
+    - name: Define build dependencies list
+      set_fact:
+        neovim_build_deps:
+          - cmake
+          - ninja-build
+          - gettext
+          - libtool
+          - libtool-bin
+          - autoconf
+          - automake
+          - pkg-config
+          - doxygen
+          - build-essential
+
+    - name: Check which build dependencies are already installed
+      command: dpkg-query -W -f='${Status}' {{ item }}
+      register: build_deps_status
+      failed_when: false
+      changed_when: false
+      loop: "{{ neovim_build_deps }}"
+
+    - name: Determine which build dependencies need to be installed
+      set_fact:
+        build_deps_to_install: "{{ neovim_build_deps }}"
+        build_deps_newly_installed: "{{ build_deps_status.results | selectattr('rc', 'ne', 0) | map(attribute='item') | list + build_deps_status.results | selectattr('stdout', 'search', 'deinstall') | map(attribute='item') | list }}"
+
+    - name: Display packages to be newly installed
+      debug:
+        msg: "Will install and later remove: {{ build_deps_newly_installed }}"
+
+    - name: Install build dependencies for neovim
+      apt:
+        name: "{{ build_deps_to_install }}"
+        state: present
+        update_cache: yes
+      become: true
+
+    - name: Create temporary build directory
+      tempfile:
+        state: directory
+        suffix: nvim-build
+      register: nvim_build_dir
+
+    - name: Download neovim source from GitHub
+      get_url:
+        url: "https://github.com/neovim/neovim/archive/refs/tags/{{ neovim_latest_version }}.tar.gz"
+        dest: "{{ nvim_build_dir.path }}/neovim.tar.gz"
+        mode: '0644'
+
+    - name: Extract neovim source
+      unarchive:
+        src: "{{ nvim_build_dir.path }}/neovim.tar.gz"
+        dest: "{{ nvim_build_dir.path }}"
+        remote_src: yes
+
+    - name: Build neovim from source
+      command: make CMAKE_BUILD_TYPE=RelWithDebInfo
+      args:
+        chdir: "{{ nvim_build_dir.path }}/neovim-{{ neovim_latest_version | regex_replace('^v', '') }}"
+      environment:
+        CMAKE_INSTALL_PREFIX: /usr/local
+
+    - name: Install neovim to /usr/local
+      command: make install
+      args:
+        chdir: "{{ nvim_build_dir.path }}/neovim-{{ neovim_latest_version | regex_replace('^v', '') }}"
+      become: true
+
+    - name: Remove old neovim apt package
+      apt:
+        name: neovim
+        state: absent
+      become: true
+
+    - name: Configure update-alternatives for nvim
+      alternatives:
+        name: "{{ item.name }}"
+        link: "/usr/bin/{{ item.name }}"
+        path: /usr/local/bin/nvim
+        priority: 60
+      become: true
+      loop:
+        - { name: "nvim" }
+        - { name: "vi" }
+        - { name: "vim" }
+        - { name: "editor" }
+
+    - name: Remove only newly installed build dependencies
+      apt:
+        name: "{{ build_deps_newly_installed }}"
+        state: absent
+        autoremove: yes
+      become: true
+      when: build_deps_newly_installed | length > 0
+
+    - name: Clean up build directory
+      file:
+        path: "{{ nvim_build_dir.path }}"
+        state: absent
+
+    - name: Verify neovim installation
+      command: nvim --version
+      register: nvim_final_version
+      changed_when: false
+
+    - name: Display final neovim version
+      debug:
+        msg: "Neovim successfully upgraded to: {{ nvim_final_version.stdout_lines[0] }}"
+
+  when: nvim_current_version is version(neovim_min_version, '<')
