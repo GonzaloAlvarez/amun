@@ -91,17 +91,25 @@
         remote_src: yes
 
     - name: Build neovim from source
-      command: make CMAKE_BUILD_TYPE=RelWithDebInfo
+      command: make CMAKE_BUILD_TYPE=RelWithDebInfo CMAKE_INSTALL_PREFIX=/usr/local
       args:
         chdir: "{{ nvim_build_dir.path }}/neovim-{{ neovim_latest_version | regex_replace('^v', '') }}"
-      environment:
-        CMAKE_INSTALL_PREFIX: /usr/local
 
     - name: Install neovim to /usr/local
       command: make install
       args:
         chdir: "{{ nvim_build_dir.path }}/neovim-{{ neovim_latest_version | regex_replace('^v', '') }}"
       become: true
+
+    - name: Verify neovim binary exists
+      stat:
+        path: /usr/local/bin/nvim
+      register: nvim_binary
+
+    - name: Fail if neovim binary not found
+      fail:
+        msg: "Neovim binary not found at /usr/local/bin/nvim after installation"
+      when: not nvim_binary.stat.exists
 
     - name: Remove old neovim apt package
       apt:
