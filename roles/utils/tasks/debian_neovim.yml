@@ -142,6 +142,7 @@
       file:
         path: "{{ nvim_build_dir.path }}"
         state: absent
+      become: true
 
     - name: Verify neovim installation
       command: nvim --version
