@@ -41,6 +41,7 @@ linux_packages:
   - unzip
   - python3-pip
   - python3-setuptools
+  - vim-nox
   - neovim
   - net-tools
   - kbd
@@ -50,6 +51,7 @@ arch_packages:
   - curl
   - git
   - gnupg
+  - vim
   - neovim
   - openssh
   - python

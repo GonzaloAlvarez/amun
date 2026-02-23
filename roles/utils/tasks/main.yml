@@ -81,7 +81,18 @@
     - ansible_facts['os_family'] in ['Debian', 'Archlinux']
     - nvim_binary_path is defined
 
-- name: Configure update-alternatives for vi to point to vim
+- name: Configure update-alternatives for vi to point to vim.nox (Debian)
+  alternatives:
+    name: vi
+    link: /usr/bin/vi
+    path: /usr/bin/vim.nox
+    priority: 60
+  become: true
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - nvim_binary_path is defined
+
+- name: Configure update-alternatives for vi to point to vim (Arch)
   alternatives:
     name: vi
     link: /usr/bin/vi
@@ -89,5 +100,5 @@
     priority: 60
   become: true
   when:
-    - ansible_facts['os_family'] in ['Debian', 'Archlinux']
+    - ansible_facts['os_family'] == 'Archlinux'
     - nvim_binary_path is defined
