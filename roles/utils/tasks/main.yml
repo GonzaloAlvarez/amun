@@ -51,3 +51,43 @@
     state: present
   become: true
   when: ansible_facts['os_family'] == 'Archlinux'
+
+- name: Find neovim binary path
+  command: which nvim
+  register: nvim_path_result
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] in ['Debian', 'Archlinux']
+
+- name: Set neovim binary path
+  set_fact:
+    nvim_binary_path: "{{ nvim_path_result.stdout }}"
+  when:
+    - ansible_facts['os_family'] in ['Debian', 'Archlinux']
+    - nvim_path_result.rc == 0
+
+- name: Configure update-alternatives for nvim and vim to point to neovim
+  alternatives:
+    name: "{{ item.name }}"
+    link: "/usr/bin/{{ item.name }}"
+    path: "{{ nvim_binary_path }}"
+    priority: 60
+  become: true
+  loop:
+    - { name: "nvim" }
+    - { name: "vim" }
+    - { name: "editor" }
+  when:
+    - ansible_facts['os_family'] in ['Debian', 'Archlinux']
+    - nvim_binary_path is defined
+
+- name: Configure update-alternatives for vi to point to vim
+  alternatives:
+    name: vi
+    link: /usr/bin/vi
+    path: /usr/bin/vim
+    priority: 60
+  become: true
+  when:
+    - ansible_facts['os_family'] in ['Debian', 'Archlinux']
+    - nvim_binary_path is defined

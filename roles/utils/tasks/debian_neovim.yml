@@ -117,19 +117,6 @@
         state: absent
       become: true
 
-    - name: Configure update-alternatives for nvim
-      alternatives:
-        name: "{{ item.name }}"
-        link: "/usr/bin/{{ item.name }}"
-        path: /usr/local/bin/nvim
-        priority: 60
-      become: true
-      loop:
-        - { name: "nvim" }
-        - { name: "vi" }
-        - { name: "vim" }
-        - { name: "editor" }
-
     - name: Remove only newly installed build dependencies
       apt:
         name: "{{ build_deps_newly_installed }}"
