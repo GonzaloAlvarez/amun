@@ -22,9 +22,10 @@
 
 - name: Ensure the extra utilities are installed (mac)
   community.general.homebrew_cask:
-    name: "{{ homebrew_cask_packages }}"
+    name: "{{ item }}"
     state: present
-    update_homebrew: true
+  loop: "{{ homebrew_cask_packages }}"
+  ignore_errors: true
   when: ansible_facts['os_family'] == 'Darwin'
 
 - name: Ensure the different utilitis are installed (linux)
