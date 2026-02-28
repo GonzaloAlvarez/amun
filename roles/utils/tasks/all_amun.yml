@@ -1,0 +1,12 @@
+---
+- name: Ensure ~/bin directory exists
+  file:
+    path: "{{ ansible_env.HOME }}/bin"
+    state: directory
+    mode: "0755"
+
+- name: Download amun script
+  get_url:
+    url: https://raw.githubusercontent.com/gonzaloalvarez/amun/main/amun
+    dest: "{{ ansible_env.HOME }}/bin/amun"
+    mode: "0755"

@@ -102,3 +102,6 @@
   when:
     - ansible_facts['os_family'] == 'Archlinux'
     - nvim_binary_path is defined
+
+- name: Install amun CLI
+  import_tasks: all_amun.yml

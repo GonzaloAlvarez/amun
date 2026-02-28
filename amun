@@ -41,12 +41,11 @@ import dulwich.porcelain
 
 shutil.rmtree(pathlib.Path.home() / ".provisioning", ignore_errors=True)
 try:
-    if len(sys.argv) > 1:
-        dulwich.porcelain.clone(f"https://github.com/GonzaloAlvarez/amun-{sys.argv[1]}.git", pathlib.Path.home() / ".provisioning")
-    elif os.getenv('AMUN_REPO'):
+    repo_name = f"amun-{sys.argv[1]}" if len(sys.argv) > 1 else "amun"
+    if os.getenv('AMUN_REPO'):
         shutil.copytree(os.getenv('AMUN_REPO'), pathlib.Path.home() / ".provisioning")
     else:
-        dulwich.porcelain.clone("https://github.com/GonzaloAlvarez/amun.git", pathlib.Path.home() / ".provisioning")
+        dulwich.porcelain.clone(f"https://github.com/GonzaloAlvarez/{repo_name}.git", pathlib.Path.home() / ".provisioning")
 
     if (pathlib.Path.home() / ".provisioning" / "requirements.yml").exists():
         subprocess.run(f'"{venv}/bin/ansible-galaxy" install -r requirements.yml', shell=True, check=True, cwd=str(pathlib.Path.home() / ".provisioning"))

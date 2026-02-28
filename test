@@ -4,6 +4,27 @@ VM_USERNAME="admin"
 VM_PASSWORD="admin"
 QEMU_SSH_PORT="2221"
 TST_DIR="$(dirname "$0")/tst"
+PLUGINS=()
+PLATFORM=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		-p|--plugins)
+			shift
+			while [[ $# -gt 0 ]] && [[ ! "$1" =~ ^- ]]; do
+				PLUGINS+=("$1")
+				shift
+			done
+			;;
+		*)
+			if [ -z "$PLATFORM" ]; then
+				PLATFORM="$1"
+			fi
+			shift
+			;;
+	esac
+done
 
 function log_output {
 	if [ -z "$2" ] || [ "$2" = "true" ]; then
@@ -35,7 +56,7 @@ function boot_vm {
 	TART_NO_AUTO_PRUNE="" tart clone "$BASE_IMAGE" "$INSTANCE_NAME"
 	trap 'log_output "[HOST] Killing the VM"; tart delete $INSTANCE_NAME; cleanup' SIGINT SIGTERM
 
-	tart run --no-graphics --vnc --dir amun:. "$INSTANCE_NAME" 2>/dev/null >/dev/null &
+	tart run --no-graphics --vnc --dir dev:.. "$INSTANCE_NAME" 2>/dev/null >/dev/null &
 
 	log_output "[HOST] Waiting for VM to boot"
 	IP_ADDRESS=$(tart ip "$INSTANCE_NAME" 2>/dev/null)
@@ -131,9 +152,14 @@ function test_sequoia {
     boot_vm "ghcr.io/cirruslabs/macos-sequoia-vanilla:latest" amunsonoma
 
     ssh_command sudo networksetup -setdnsservers "Ethernet" "8.8.8.8"
-    ssh_command cp "'/Volumes/My Shared Files/amun/amun'" "~/amun"
+    ssh_command cp "'/Volumes/My Shared Files/dev/amun/amun'" "~/amun"
     ssh_command chmod +x "~/amun"
-    ssh_command "AMUN_REPO='/Volumes/My Shared Files/amun' ./amun"
+    ssh_command "AMUN_REPO='/Volumes/My Shared Files/dev/amun' ./amun"
+
+    for plugin in "${PLUGINS[@]}"; do
+        log_output "[HOST] Running plugin: ${plugin}"
+        ssh_command "AMUN_REPO='/Volumes/My Shared Files/dev/amun-${plugin}' ./amun ${plugin}"
+    done
 
     breakpoint
 
@@ -146,9 +172,14 @@ function test_debian {
     ssh_command sudo mkdir /mnt/shared
     ssh_command sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
     ssh_command sudo systemctl stop unattended-upgrades
-    ssh_command cp "/mnt/shared/amun/amun" "~/amun"
+    ssh_command cp "/mnt/shared/dev/amun/amun" "~/amun"
     ssh_command chmod +x "~/amun"
-    ssh_command "AMUN_REPO='/mnt/shared/amun' ./amun"
+    ssh_command "AMUN_REPO='/mnt/shared/dev/amun' ./amun"
+
+    for plugin in "${PLUGINS[@]}"; do
+        log_output "[HOST] Running plugin: ${plugin}"
+        ssh_command "AMUN_REPO='/mnt/shared/dev/amun-${plugin}' ./amun ${plugin}"
+    done
 
     breakpoint
 
@@ -173,14 +204,23 @@ function test_arch {
     qemu_ssh_command "cp /home/archboot/.amun/amun/amun ~/amun && chmod +x ~/amun"
     qemu_ssh_command "AMUN_REPO='/home/archboot/.amun/amun' ./amun"
 
+    for plugin in "${PLUGINS[@]}"; do
+        log_output "[HOST] Running plugin: ${plugin}"
+        tar --no-xattrs -czf "/tmp/amun-${plugin}.tar.gz" -C "$(dirname "$SCRIPT_DIR")" "amun-${plugin}"
+        qemu_scp "/tmp/amun-${plugin}.tar.gz" "/home/archboot/.amun/amun-${plugin}.tar.gz"
+        qemu_ssh_command "cd /home/archboot/.amun && tar --warning=no-unknown-keyword -xzf amun-${plugin}.tar.gz && rm -f amun-${plugin}.tar.gz"
+        qemu_ssh_command "AMUN_REPO='/home/archboot/.amun/amun-${plugin}' ./amun ${plugin}"
+    done
+
     qemu_breakpoint
 
     log_output "[HOST] Test completed, cleaning up"
     qemu_cleanup
     rm -f /tmp/amun.tar.gz
+    rm -f /tmp/amun-*.tar.gz
 }
 
-case "$1" in
+case "$PLATFORM" in
     mac|sequoia)
         test_sequoia
         ;;
@@ -200,13 +240,15 @@ case "$1" in
         test_arch
         ;;
     *)
-        echo "Usage: $0 [mac|sequoia|debian|arch|linux/arch|linux]"
+        echo "Usage: $0 [platform] [-p|--plugins <plugin> ...]"
         echo ""
-        echo "  mac, sequoia    - Test on macOS Sequoia"
-        echo "  debian          - Test on Debian Bookworm"
+        echo "  mac, sequoia     - Test on macOS Sequoia"
+        echo "  debian           - Test on Debian Bookworm"
         echo "  arch, linux/arch - Test on Arch Linux"
-        echo "  linux           - Test on Debian + Arch"
-        echo "  (no args)       - Test on all platforms"
+        echo "  linux            - Test on Debian + Arch"
+        echo "  (no args)        - Test on all platforms"
+        echo ""
+        echo "  -p, --plugins    - Run amun plugins after base provisioning"
         exit 1
         ;;
 esac
