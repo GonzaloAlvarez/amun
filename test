@@ -131,9 +131,9 @@ function test_sequoia {
     boot_vm "ghcr.io/cirruslabs/macos-sequoia-vanilla:latest" amunsonoma
 
     ssh_command sudo networksetup -setdnsservers "Ethernet" "8.8.8.8"
-    ssh_command cp "'/Volumes/My Shared Files/amun/bootstrap'" "~/bootstrap"
-    ssh_command chmod +x "~/bootstrap"
-    ssh_command "AMUN_REPO='/Volumes/My Shared Files/amun' ./bootstrap"
+    ssh_command cp "'/Volumes/My Shared Files/amun/amun'" "~/amun"
+    ssh_command chmod +x "~/amun"
+    ssh_command "AMUN_REPO='/Volumes/My Shared Files/amun' ./amun"
 
     breakpoint
 
@@ -146,9 +146,9 @@ function test_debian {
     ssh_command sudo mkdir /mnt/shared
     ssh_command sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
     ssh_command sudo systemctl stop unattended-upgrades
-    ssh_command cp "/mnt/shared/amun/bootstrap" "~/bootstrap"
-    ssh_command chmod +x "~/bootstrap"
-    ssh_command "AMUN_REPO='/mnt/shared/amun' ./bootstrap"
+    ssh_command cp "/mnt/shared/amun/amun" "~/amun"
+    ssh_command chmod +x "~/amun"
+    ssh_command "AMUN_REPO='/mnt/shared/amun' ./amun"
 
     breakpoint
 
@@ -168,10 +168,10 @@ function test_arch {
     qemu_ssh_command "mkdir -p /home/archboot/.amun"
     qemu_scp /tmp/amun.tar.gz /home/archboot/.amun/amun.tar.gz
 
-    log_output "[HOST] Extracting repository and running bootstrap"
+    log_output "[HOST] Extracting repository and running amun"
     qemu_ssh_command "cd /home/archboot/.amun && tar --warning=no-unknown-keyword -xzf amun.tar.gz && rm -f amun.tar.gz"
-    qemu_ssh_command "cp /home/archboot/.amun/amun/bootstrap ~/bootstrap && chmod +x ~/bootstrap"
-    qemu_ssh_command "AMUN_REPO='/home/archboot/.amun/amun' ./bootstrap"
+    qemu_ssh_command "cp /home/archboot/.amun/amun/amun ~/amun && chmod +x ~/amun"
+    qemu_ssh_command "AMUN_REPO='/home/archboot/.amun/amun' ./amun"
 
     qemu_breakpoint
 

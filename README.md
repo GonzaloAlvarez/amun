@@ -16,23 +16,23 @@ It enables teams to declaratively define infrastructure and environments while r
 
 ## Usage
 
-You can bootstrap **amun** into your environment with a single command.  
-This will automatically fetch and execute the bootstrap script to prepare your workspace:
+You can install **amun** into your environment with a single command.
+This will automatically fetch and execute the amun script to prepare your workspace:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gonzaloalvarez/amun/main/bootstrap)
+bash <(curl -fsSL https://raw.githubusercontent.com/gonzaloalvarez/amun/main/amun)
 ```
 or, if you are a bare debian install without curl, you can use:
 
 ```bash    
-bash <(wget -qO- https://raw.githubusercontent.com/gonzaloalvarez/amun/main/bootstrap)
+bash <(wget -qO- https://raw.githubusercontent.com/gonzaloalvarez/amun/main/amun)
 ```
 
 ## Features
 
 - ⚙️ **Hybrid provisioning:** combines **Ansible** and **Python** for flexible, scriptable infrastructure management  
 - 🧩 **Modular architecture:** role-based structure for clean separation of responsibilities  
-- 🚀 **One-line bootstrap:** quick setup with a single `curl | bash` command  
+- 🚀 **One-line install:** quick setup with a single `curl | bash` command
 - 🔁 **Idempotent operations:** safe to re-run without corrupting your setup  
 - 🧰 **Extensible tooling:** easily integrate custom Python or shell utilities  
 - 🧮 **Reproducible environments:** ensures consistent system states across machines  
