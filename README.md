@@ -66,6 +66,24 @@ Once dependencies are in place, run the integrated test suite:
 ```
 This will execute end-to-end provisioning and validation flows to ensure amun works correctly.
 
+### Molecule Testing
+
+For faster iteration on individual roles, you can use molecule to test roles in Docker containers:
+
+Prerequisites:
+- Docker installed and running
+- Python 3 available
+
+The `./molecule` script will automatically install molecule and its dependencies in a temporary virtual environment.
+
+```bash
+./molecule                    # Test all roles
+./molecule permissions        # Test specific role
+./molecule permissions verify # Run specific test step
+```
+
+Molecule tests are available for: permissions, dotfiles, utils
+
 ### Debugging
 
 To step into the environment during testing and inspect the system interactively,

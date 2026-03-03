@@ -1,0 +1,39 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_DIR=$(mktemp -d)
+TESTABLE_ROLES=("permissions" "dotfiles" "utils")
+
+trap 'rm -rf "$VENV_DIR"' EXIT SIGINT SIGTERM
+
+python3 -m venv "$VENV_DIR"
+"$VENV_DIR/bin/pip" install --upgrade pip setuptools wheel > /dev/null 2>&1
+"$VENV_DIR/bin/pip" install ansible molecule 'molecule-plugins[docker]' > /dev/null 2>&1
+
+export PATH="$VENV_DIR/bin:$PATH"
+
+if [ $# -gt 0 ] && [[ " ${TESTABLE_ROLES[@]} " =~ " $1 " ]]; then
+    ROLE="$1"
+    shift
+    cd "$SCRIPT_DIR/roles/$ROLE"
+    molecule "${@:-test}"
+elif [ $# -eq 0 ]; then
+    for role in "${TESTABLE_ROLES[@]}"; do
+        echo "========================================"
+        echo "Testing role: $role"
+        echo "========================================"
+        cd "$SCRIPT_DIR/roles/$role"
+        molecule test
+    done
+else
+    echo "Usage: $0 [role] [molecule-command]"
+    echo ""
+    echo "Available roles: ${TESTABLE_ROLES[*]}"
+    echo ""
+    echo "Examples:"
+    echo "  $0                    # Test all roles"
+    echo "  $0 permissions        # Test permissions role"
+    echo "  $0 permissions verify # Run verify step only"
+    exit 1
+fi

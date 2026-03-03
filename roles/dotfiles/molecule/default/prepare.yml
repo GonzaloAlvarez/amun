@@ -1,0 +1,21 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      become: true
+
+    - name: Install git
+      ansible.builtin.apt:
+        name: git
+        state: present
+      become: true
+
+    - name: Ensure HOME directory exists
+      ansible.builtin.file:
+        path: "{{ ansible_env.HOME }}"
+        state: directory
+        mode: "0755"

@@ -1,0 +1,25 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Wait for system to be ready
+      ansible.builtin.wait_for_connection:
+        timeout: 30
+
+    - name: Check apt cache directory exists
+      ansible.builtin.stat:
+        path: /var/cache/apt
+      register: apt_cache
+      failed_when: not apt_cache.stat.exists or not apt_cache.stat.isdir
+
+    - name: Verify apt is functional
+      ansible.builtin.command: apt-get --version
+      register: apt_version
+      changed_when: false
+      failed_when: apt_version.rc != 0
+
+    - name: Check system is in clean state
+      ansible.builtin.command: dpkg --audit
+      register: dpkg_audit
+      changed_when: false
+      failed_when: dpkg_audit.rc != 0

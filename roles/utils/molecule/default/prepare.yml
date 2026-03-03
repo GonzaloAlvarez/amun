@@ -1,0 +1,9 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Ensure apt is available
+      ansible.builtin.wait_for:
+        path: /usr/bin/apt
+        state: present
+        timeout: 10

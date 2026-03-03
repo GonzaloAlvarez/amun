@@ -1,1 +1,23 @@
 ---
+galaxy_info:
+  role_name: utils
+  namespace: amun
+  author: Gonzalo Alvarez
+  description: Install system utilities and packages
+  license: GPL-3.0
+  min_ansible_version: "2.9"
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+    - name: Archlinux
+      versions:
+        - all
+    - name: MacOSX
+      versions:
+        - all
+
+dependencies: []

@@ -16,6 +16,8 @@
   ansible.builtin.shell:
     cmd: "./setup"
     chdir: "{{ ansible_facts['env'].HOME }}/.dotfiles/"
+  failed_when: false
+  changed_when: false
 
 - name: Execute osx specific tasks
   ansible.builtin.include_tasks: osx_iterm.yml

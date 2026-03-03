@@ -1,3 +1,4 @@
 ---
 homebrew_packages: []
 linux_packages: []
+neovim_min_version: "0.12.1"
