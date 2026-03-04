@@ -1,0 +1,169 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VENV_DIR=$(mktemp -d)
+CORE_ROLES=("permissions" "utils" "dotfiles" "config")
+
+trap 'rm -rf "$VENV_DIR"' EXIT SIGINT SIGTERM
+
+IPS=()
+PLUGINS=()
+SSH_USER="$USER"
+PLUGIN_MODE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -p)
+            PLUGIN_MODE="lower"
+            shift
+            while [[ $# -gt 0 && "$1" != -* ]]; do
+                PLUGINS+=("$1")
+                shift
+            done
+            ;;
+        -P)
+            PLUGIN_MODE="upper"
+            shift
+            while [[ $# -gt 0 && "$1" != -* ]]; do
+                PLUGINS+=("$1")
+                shift
+            done
+            ;;
+        -u)
+            shift
+            SSH_USER="$1"
+            shift
+            ;;
+        -*)
+            echo "Unknown flag: $1"
+            echo "Usage: $0 <ip1> [ip2 ...] [-p plugin ...] [-P plugin ...] [-u user]"
+            exit 1
+            ;;
+        *)
+            IPS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ ${#IPS[@]} -eq 0 ]]; then
+    echo "Usage: $0 <ip1> [ip2 ...] [-p plugin ...] [-P plugin ...] [-u user]"
+    echo ""
+    echo "  (no flags)  Run core amun roles only"
+    echo "  -p          Run core amun roles + specified plugins"
+    echo "  -P          Run only specified plugins (no core roles)"
+    echo "  -u          SSH user (default: \$USER)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 10.0.0.5"
+    echo "  $0 10.0.0.5 10.0.0.6 -p docker -u admin"
+    echo "  $0 10.0.0.5 -P docker"
+    exit 1
+fi
+
+if [[ "$PLUGIN_MODE" == "upper" && ${#PLUGINS[@]} -eq 0 ]]; then
+    echo "Error: -P requires at least one plugin name"
+    exit 1
+fi
+
+echo "==> Setting up ansible environment..."
+python3 -m venv "$VENV_DIR"
+"$VENV_DIR/bin/pip" install --upgrade pip setuptools wheel > /dev/null 2>&1
+"$VENV_DIR/bin/pip" install ansible paramiko > /dev/null 2>&1
+
+GITHUB_BASE=""
+if git -C "$SCRIPT_DIR" remote get-url origin &>/dev/null; then
+    REMOTE=$(git -C "$SCRIPT_DIR" remote get-url origin)
+    if [[ "$REMOTE" =~ github\.com[:/]([^/]+)/ ]]; then
+        GITHUB_BASE="https://github.com/${BASH_REMATCH[1]}"
+    fi
+fi
+
+PLUGIN_DIRS=()
+for plugin in "${PLUGINS[@]}"; do
+    plugin_name="amun-${plugin}"
+    sibling_dir="$(dirname "$SCRIPT_DIR")/$plugin_name"
+    clone_dir="$VENV_DIR/$plugin_name"
+
+    if [[ -d "$sibling_dir" ]]; then
+        echo "==> Using local plugin: $sibling_dir"
+        PLUGIN_DIRS+=("$sibling_dir")
+    elif [[ -n "$GITHUB_BASE" ]]; then
+        echo "==> Cloning plugin '$plugin_name' from GitHub..."
+        git clone "$GITHUB_BASE/$plugin_name" "$clone_dir"
+        PLUGIN_DIRS+=("$clone_dir")
+    else
+        echo "Error: Plugin '$plugin' not found at '$sibling_dir' and no GitHub remote configured"
+        exit 1
+    fi
+done
+
+ROLES_PATH="$SCRIPT_DIR/galaxy_roles:$SCRIPT_DIR/roles"
+COLLECTIONS_PATH="$VENV_DIR"
+for plugin_dir in "${PLUGIN_DIRS[@]}"; do
+    ROLES_PATH="$ROLES_PATH:$plugin_dir/galaxy_roles:$plugin_dir/roles"
+done
+
+cat > "$VENV_DIR/ansible.cfg" <<EOF
+[defaults]
+nocows = True
+collections_path = $COLLECTIONS_PATH
+roles_path = $ROLES_PATH
+host_key_checking = false
+ask_vault_pass = false
+interpreter_python = auto_silent
+[ssh_connection]
+scp_if_ssh = True
+EOF
+
+echo "==> Installing galaxy requirements..."
+for plugin_dir in "${PLUGIN_DIRS[@]}"; do
+    if [[ -f "$plugin_dir/requirements.yml" ]]; then
+        ANSIBLE_CONFIG="$VENV_DIR/ansible.cfg" \
+            "$VENV_DIR/bin/ansible-galaxy" collection install \
+            -r "$plugin_dir/requirements.yml" \
+            -p "$COLLECTIONS_PATH" > /dev/null 2>&1
+    fi
+done
+
+{
+    echo "[all]"
+    for ip in "${IPS[@]}"; do
+        echo "$ip"
+    done
+    echo ""
+    echo "[all:vars]"
+    echo "ansible_user=$SSH_USER"
+} > "$VENV_DIR/inventory"
+
+ROLES=()
+if [[ "$PLUGIN_MODE" != "upper" ]]; then
+    ROLES+=("${CORE_ROLES[@]}")
+fi
+for plugin in "${PLUGINS[@]}"; do
+    ROLES+=("$plugin")
+done
+
+{
+    echo "---"
+    echo "- hosts: all"
+    echo "  become: true"
+    echo "  roles:"
+    for role in "${ROLES[@]}"; do
+        echo "    - $role"
+    done
+} > "$VENV_DIR/playbook.yml"
+
+echo ""
+echo "==> Targets:  ${IPS[*]}"
+echo "==> SSH user: $SSH_USER"
+echo "==> Roles:    ${ROLES[*]}"
+echo ""
+
+ANSIBLE_CONFIG="$VENV_DIR/ansible.cfg" \
+    "$VENV_DIR/bin/ansible-playbook" \
+    -i "$VENV_DIR/inventory" \
+    "$VENV_DIR/playbook.yml" \
+    --ask-pass \
+    --ask-become-pass
