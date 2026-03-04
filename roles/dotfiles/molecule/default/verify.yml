@@ -4,18 +4,18 @@
   tasks:
     - name: Check .dotfiles directory exists
       ansible.builtin.stat:
-        path: "{{ ansible_env.HOME }}/.dotfiles"
+        path: "{{ ansible_facts['env']['HOME'] }}/.dotfiles"
       register: dotfiles_dir
       failed_when: not dotfiles_dir.stat.exists or not dotfiles_dir.stat.isdir
 
     - name: Verify dotfiles is a git repository
       ansible.builtin.stat:
-        path: "{{ ansible_env.HOME }}/.dotfiles/.git"
+        path: "{{ ansible_facts['env']['HOME'] }}/.dotfiles/.git"
       register: dotfiles_git
       failed_when: not dotfiles_git.stat.exists or not dotfiles_git.stat.isdir
 
     - name: Check gear directory exists
       ansible.builtin.stat:
-        path: "{{ ansible_env.HOME }}/.gear"
+        path: "{{ ansible_facts['env']['HOME'] }}/.gear"
       register: gear_dir
       failed_when: not gear_dir.stat.exists or not gear_dir.stat.isdir
