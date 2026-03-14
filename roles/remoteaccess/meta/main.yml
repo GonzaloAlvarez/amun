@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  role_name: remoteaccess
+  namespace: amun
+  author: Gonzalo Alvarez
+  description: Configure SSH access, harden SSHD, and set up firewall rules for remote access
+  license: GPL-3.0
+  min_ansible_version: "2.9"
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+
+dependencies: []

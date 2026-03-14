@@ -1,0 +1,16 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Ensure apt is available
+      ansible.builtin.wait_for:
+        path: /usr/bin/apt
+        state: present
+        timeout: 10
+
+    - name: Install openssh-client for key validation
+      ansible.builtin.apt:
+        name: openssh-client
+        state: present
+        update_cache: true
+      become: true

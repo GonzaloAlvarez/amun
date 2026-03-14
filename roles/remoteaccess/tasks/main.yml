@@ -1,0 +1,37 @@
+---
+- name: Ensure openssh-server is installed (Debian/Ubuntu)
+  package:
+    name: openssh-server
+    state: present
+  become: true
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Ensure openssh-server is installed (Arch)
+  package:
+    name: openssh
+    state: present
+  become: true
+  when: ansible_facts['os_family'] == 'Archlinux'
+
+- name: Set sshd service name for Arch
+  set_fact:
+    sshd_service_name: sshd
+  when: ansible_facts['os_family'] == 'Archlinux'
+
+- name: Ensure sshd service is enabled and running
+  service:
+    name: "{{ sshd_service_name }}"
+    enabled: true
+    state: started
+  become: true
+  when: ansible_facts['os_family'] != 'Darwin'
+
+- name: Configure SSH authorized keys
+  import_tasks: ssh_authorized_keys.yml
+
+- name: Harden SSH daemon configuration
+  import_tasks: sshd_config.yml
+  when: ansible_facts['os_family'] != 'Darwin'
+
+- name: Configure firewall to allow SSH access
+  import_tasks: firewall.yml

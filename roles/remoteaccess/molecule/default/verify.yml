@@ -1,0 +1,54 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Get current username
+      ansible.builtin.command: id -un
+      register: current_user_result
+      changed_when: false
+
+    - name: Check openssh-server is installed
+      ansible.builtin.command: dpkg -l openssh-server
+      register: openssh_check
+      changed_when: false
+      failed_when: openssh_check.rc != 0
+
+    - name: Check authorized_keys file exists
+      ansible.builtin.stat:
+        path: "{{ ansible_facts['env']['HOME'] }}/.ssh/authorized_keys"
+      register: authkeys_stat
+      failed_when: not authkeys_stat.stat.exists
+
+    - name: Check authorized_keys is not empty
+      ansible.builtin.command: "wc -l {{ ansible_facts['env']['HOME'] }}/.ssh/authorized_keys"
+      register: authkeys_lines
+      changed_when: false
+      failed_when: authkeys_lines.stdout.split()[0] | int == 0
+
+    - name: Check PermitRootLogin is disabled in sshd_config
+      ansible.builtin.command: grep "^PermitRootLogin no" /etc/ssh/sshd_config
+      register: root_login_check
+      changed_when: false
+      become: true
+      failed_when: root_login_check.rc != 0
+
+    - name: Check PasswordAuthentication is disabled in sshd_config
+      ansible.builtin.command: grep "^PasswordAuthentication no" /etc/ssh/sshd_config
+      register: password_auth_check
+      changed_when: false
+      become: true
+      failed_when: password_auth_check.rc != 0
+
+    - name: Check ufw or iptables allows port 22
+      block:
+        - name: Check ufw status for SSH
+          ansible.builtin.command: ufw status
+          register: ufw_status
+          changed_when: false
+          become: true
+          failed_when: false
+
+        - name: Verify SSH is allowed in ufw (if ufw is active)
+          ansible.builtin.assert:
+            that: "'22/tcp' in ufw_status.stdout or 'OpenSSH' in ufw_status.stdout or ufw_status.rc != 0"
+            fail_msg: "UFW is active but port 22 does not appear to be allowed"

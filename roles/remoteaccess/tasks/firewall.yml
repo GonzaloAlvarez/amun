@@ -1,0 +1,74 @@
+---
+- name: Check if ufw is available
+  command: which ufw
+  register: ufw_check
+  changed_when: false
+  failed_when: false
+
+- name: Allow SSH through ufw (if ufw is available)
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+  become: true
+  when: ufw_check.rc == 0
+
+- name: Ensure ufw is enabled (if ufw is available)
+  community.general.ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+  become: true
+  when: ufw_check.rc == 0
+
+- name: Ensure ufw service persists across reboots (if ufw is available)
+  service:
+    name: ufw
+    enabled: true
+    state: started
+  become: true
+  when: ufw_check.rc == 0
+
+- name: Check if iptables is available (fallback when ufw is absent)
+  command: which iptables
+  register: iptables_check
+  changed_when: false
+  failed_when: false
+  when: ufw_check.rc != 0
+
+- name: Allow SSH through iptables (if iptables is available and ufw is not)
+  iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "22"
+    jump: ACCEPT
+    comment: "Allow SSH access"
+  become: true
+  when:
+    - ufw_check.rc != 0
+    - iptables_check.rc == 0
+
+- name: Install iptables-persistent to persist rules across reboots
+  package:
+    name: iptables-persistent
+    state: present
+  become: true
+  when:
+    - ufw_check.rc != 0
+    - iptables_check.rc == 0
+    - ansible_facts['os_family'] == 'Debian'
+
+- name: Save iptables rules so they persist across reboots
+  community.general.iptables_state:
+    state: saved
+    path: /etc/iptables/rules.v4
+  become: true
+  when:
+    - ufw_check.rc != 0
+    - iptables_check.rc == 0
+    - ansible_facts['os_family'] == 'Debian'
+
+- name: Enable SSH remote login (macOS)
+  command: systemsetup -setremotelogin on
+  become: true
+  when: ansible_facts['os_family'] == 'Darwin'
