@@ -186,6 +186,25 @@ function test_debian {
     shutdown
 }
 
+function test_ubuntu {
+    boot_vm "ghcr.io/cirruslabs/ubuntu:24.04" amunnoble
+
+    ssh_command sudo mkdir /mnt/shared
+    ssh_command sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
+    ssh_command cp "/mnt/shared/dev/amun/amun" "~/amun"
+    ssh_command chmod +x "~/amun"
+    ssh_command "AMUN_REPO='/mnt/shared/dev/amun' ./amun"
+
+    for plugin in "${PLUGINS[@]}"; do
+        log_output "[HOST] Running plugin: ${plugin}"
+        ssh_command "AMUN_REPO='/mnt/shared/dev/amun-${plugin}' ./amun ${plugin}"
+    done
+
+    breakpoint
+
+    shutdown
+}
+
 function test_arch {
     trap 'log_output "[HOST] Interrupted, cleaning up"; qemu_cleanup; cleanup' SIGINT SIGTERM
 
@@ -227,16 +246,21 @@ case "$PLATFORM" in
     debian)
         test_debian
         ;;
+    ubuntu)
+        test_ubuntu
+        ;;
     arch|linux/arch)
         test_arch
         ;;
     linux)
         test_debian
+        test_ubuntu
         test_arch
         ;;
     "")
         test_sequoia
         test_debian
+        test_ubuntu
         test_arch
         ;;
     *)
@@ -244,8 +268,9 @@ case "$PLATFORM" in
         echo ""
         echo "  mac, sequoia     - Test on macOS Sequoia"
         echo "  debian           - Test on Debian Bookworm"
+        echo "  ubuntu           - Test on Ubuntu 24.04"
         echo "  arch, linux/arch - Test on Arch Linux"
-        echo "  linux            - Test on Debian + Arch"
+        echo "  linux            - Test on Debian + Ubuntu + Arch"
         echo "  (no args)        - Test on all platforms"
         echo ""
         echo "  -p, --plugins    - Run amun plugins after base provisioning"

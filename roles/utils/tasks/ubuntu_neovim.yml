@@ -1,0 +1,20 @@
+---
+- name: Install software-properties-common for add-apt-repository
+  apt:
+    name: software-properties-common
+    state: present
+    update_cache: yes
+  become: true
+
+- name: Add neovim unstable PPA
+  apt_repository:
+    repo: ppa:neovim-ppa/unstable
+    state: present
+  become: true
+
+- name: Install neovim from PPA
+  apt:
+    name: neovim
+    state: latest
+    update_cache: yes
+  become: true

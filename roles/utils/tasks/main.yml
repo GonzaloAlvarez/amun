@@ -37,7 +37,13 @@
 
 - name: Ensure neovim meets minimum version requirements (Debian)
   import_tasks: debian_neovim.yml
-  when: ansible_facts['os_family'] == 'Debian'
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - ansible_facts['distribution'] != 'Ubuntu'
+
+- name: Install neovim from PPA (Ubuntu)
+  import_tasks: ubuntu_neovim.yml
+  when: ansible_facts['distribution'] == 'Ubuntu'
 
 - name: Update packages (Arch)
   community.general.pacman:
@@ -67,20 +73,17 @@
     - ansible_facts['os_family'] in ['Debian', 'Archlinux']
     - nvim_path_result.rc == 0
 
-- name: Configure update-alternatives for nvim and vim to point to neovim
+- name: Configure update-alternatives for nvim to point to neovim
   alternatives:
-    name: "{{ item.name }}"
-    link: "/usr/bin/{{ item.name }}"
+    name: nvim
+    link: /usr/bin/nvim
     path: "{{ nvim_binary_path }}"
     priority: 60
   become: true
-  loop:
-    - { name: "nvim" }
-    - { name: "vim" }
-    - { name: "editor" }
   when:
     - ansible_facts['os_family'] in ['Debian', 'Archlinux']
     - nvim_binary_path is defined
+    - nvim_binary_path != '/usr/bin/nvim'
 
 - name: Check if vim.nox exists
   stat:
@@ -88,28 +91,31 @@
   register: vim_nox_stat
   when: ansible_facts['os_family'] == 'Debian'
 
-- name: Configure update-alternatives for vi to point to vim.nox (Debian)
+- name: Configure update-alternatives for vim and vi to point to vim.nox (Debian)
   alternatives:
-    name: vi
-    link: /usr/bin/vi
+    name: "{{ item }}"
+    link: "/usr/bin/{{ item }}"
     path: /usr/bin/vim.nox
     priority: 60
   become: true
+  loop:
+    - vi
+    - vim
   when:
     - ansible_facts['os_family'] == 'Debian'
-    - nvim_binary_path is defined
     - vim_nox_stat.stat.exists
 
-- name: Configure update-alternatives for vi to point to vim (Arch)
+- name: Configure update-alternatives for vim and vi to point to vim (Arch)
   alternatives:
-    name: vi
-    link: /usr/bin/vi
+    name: "{{ item }}"
+    link: "/usr/bin/{{ item }}"
     path: /usr/bin/vim
     priority: 60
   become: true
-  when:
-    - ansible_facts['os_family'] == 'Archlinux'
-    - nvim_binary_path is defined
+  loop:
+    - vi
+    - vim
+  when: ansible_facts['os_family'] == 'Archlinux'
 
 - name: Install amun CLI
   import_tasks: all_amun.yml
