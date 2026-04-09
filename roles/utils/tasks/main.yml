@@ -105,16 +105,12 @@
     - ansible_facts['os_family'] == 'Debian'
     - vim_nox_stat.stat.exists
 
-- name: Configure update-alternatives for vim and vi to point to vim (Arch)
-  alternatives:
-    name: "{{ item }}"
-    link: "/usr/bin/{{ item }}"
-    path: /usr/bin/vim
-    priority: 60
+- name: Create vi symlink to vim (Arch)
+  ansible.builtin.file:
+    src: /usr/bin/vim
+    dest: /usr/local/bin/vi
+    state: link
   become: true
-  loop:
-    - vi
-    - vim
   when: ansible_facts['os_family'] == 'Archlinux'
 
 - name: Install amun CLI
