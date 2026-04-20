@@ -6,4 +6,5 @@
     - { role: utils, become: false }
     - { role: dotfiles, become: false }
     - { role: config, become: false }
+    - { role: ufw, become: false, when: "ansible_facts['system'] != 'Darwin'" }
     - { role: remoteaccess, become: false }

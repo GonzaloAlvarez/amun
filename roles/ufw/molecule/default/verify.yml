@@ -1,0 +1,25 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Check ufw is installed
+      ansible.builtin.command: dpkg -l ufw
+      register: ufw_installed
+      changed_when: false
+      failed_when: ufw_installed.rc != 0
+
+    - name: Check ufw status
+      ansible.builtin.command: ufw status
+      register: ufw_status
+      changed_when: false
+      become: true
+
+    - name: Verify ufw is active
+      ansible.builtin.assert:
+        that: "'Status: active' in ufw_status.stdout"
+        fail_msg: "UFW is not active"
+
+    - name: Verify port 22 is allowed
+      ansible.builtin.assert:
+        that: "'22/tcp' in ufw_status.stdout"
+        fail_msg: "Port 22/tcp is not allowed in UFW"

@@ -33,5 +33,7 @@
   import_tasks: sshd_config.yml
   when: ansible_facts['os_family'] != 'Darwin'
 
-- name: Configure firewall to allow SSH access
-  import_tasks: firewall.yml
+- name: Enable SSH remote login (macOS)
+  command: systemsetup -setremotelogin on
+  become: true
+  when: ansible_facts['os_family'] == 'Darwin'

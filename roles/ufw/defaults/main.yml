@@ -1,0 +1,5 @@
+---
+ufw_default_incoming_policy: deny
+ufw_allowed_ports:
+  - port: "22"
+    proto: tcp

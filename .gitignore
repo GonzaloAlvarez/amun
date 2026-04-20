@@ -6,3 +6,4 @@ tst/edk2-aarch64-vars.fd
 tst/ssh_key.pem
 tst/test_key
 tst/test_key.pub
+.venv

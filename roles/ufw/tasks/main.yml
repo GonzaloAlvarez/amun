@@ -1,0 +1,32 @@
+---
+- name: Install ufw
+  package:
+    name: ufw
+    state: present
+  become: true
+  when: ansible_facts['os_family'] != 'Darwin'
+
+- name: Allow configured ports through ufw
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto }}"
+  become: true
+  loop: "{{ ufw_allowed_ports }}"
+  when: ansible_facts['os_family'] != 'Darwin'
+
+- name: Set default incoming policy and enable ufw
+  community.general.ufw:
+    state: enabled
+    policy: "{{ ufw_default_incoming_policy }}"
+    direction: incoming
+  become: true
+  when: ansible_facts['os_family'] != 'Darwin'
+
+- name: Ensure ufw service is enabled and started
+  service:
+    name: ufw
+    enabled: true
+    state: started
+  become: true
+  when: ansible_facts['os_family'] != 'Darwin'

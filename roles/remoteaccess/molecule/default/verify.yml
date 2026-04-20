@@ -38,17 +38,3 @@
       changed_when: false
       become: true
       failed_when: password_auth_check.rc != 0
-
-    - name: Check ufw or iptables allows port 22
-      block:
-        - name: Check ufw status for SSH
-          ansible.builtin.command: ufw status
-          register: ufw_status
-          changed_when: false
-          become: true
-          failed_when: false
-
-        - name: Verify SSH is allowed in ufw (if ufw is active)
-          ansible.builtin.assert:
-            that: "'22/tcp' in ufw_status.stdout or 'OpenSSH' in ufw_status.stdout or ufw_status.rc != 0"
-            fail_msg: "UFW is active but port 22 does not appear to be allowed"
