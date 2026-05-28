@@ -69,7 +69,7 @@ install() {
 
     qemu-system-aarch64 \
         -machine virt,accel=hvf \
-        -cpu cortex-a57 -smp 4 -m 4G \
+        -cpu host -smp 4 -m 4G \
         -device virtio-net-pci,netdev=net0 \
         -netdev user,id=net0,hostfwd=tcp:127.0.0.1:2221-:11838 \
         -device nvme,drive=disk0,serial=d0 \
@@ -100,7 +100,7 @@ headless_boot() {
 
     qemu-system-aarch64 \
         -machine virt,accel=hvf \
-        -cpu cortex-a57 -smp 4 -m "$RAM_SIZE" \
+        -cpu host -smp 4 -m "$RAM_SIZE" \
         -device virtio-net-pci,netdev=net0 \
         -netdev user,id=net0,hostfwd=tcp::2221-:22 \
         -device nvme,drive=disk0,serial=d0 \
