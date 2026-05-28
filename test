@@ -4,6 +4,7 @@ VM_USERNAME="admin"
 VM_PASSWORD="admin"
 QEMU_SSH_PORT="2221"
 TST_DIR="$(dirname "$0")/tst"
+VM_SSH_KEY="/tmp/amun-test-vmkey-$$"
 PLUGINS=()
 PLATFORM=""
 
@@ -41,12 +42,32 @@ function shutdown {
     log_output "[HOST] Shutting down VM"
     tart stop "$INSTANCE_NAME"
     tart delete "$INSTANCE_NAME"
+    rm -f "$VM_SSH_KEY" "$VM_SSH_KEY.pub"
 }
 
 function ssh_command() {
 	command="$@"
 
 	SSHPASS=$VM_PASSWORD sshpass -e ssh -o StrictHostKeyChecking=no "$VM_USERNAME@$IP_ADDRESS" "$command"
+}
+
+# Inject a per-test ephemeral SSH key for the admin user. Used so post-amun
+# commands (e.g. the `-p <plugin>` re-SSH loop) still work after amun's
+# remoteaccess role disables PasswordAuthentication on sshd.
+function setup_vm_key {
+    log_output "[HOST] Generating ephemeral SSH key for $VM_USERNAME@$IP_ADDRESS"
+    rm -f "$VM_SSH_KEY" "$VM_SSH_KEY.pub"
+    ssh-keygen -t ed25519 -f "$VM_SSH_KEY" -N "" -q
+    log_output "[HOST] Injecting pubkey into $VM_USERNAME's authorized_keys"
+    SSHPASS=$VM_PASSWORD sshpass -e ssh -o StrictHostKeyChecking=no "$VM_USERNAME@$IP_ADDRESS" \
+        "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" \
+        < "$VM_SSH_KEY.pub"
+}
+
+function ssh_command_key() {
+    command="$@"
+    ssh -i "$VM_SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes \
+        "$VM_USERNAME@$IP_ADDRESS" "$command"
 }
 
 function boot_vm {
@@ -79,6 +100,22 @@ function breakpoint {
     if [ ${DEBUG:-0} -eq 1 ]; then
         SSHPASS=$VM_PASSWORD sshpass -e ssh -q -o ConnectTimeout=1 -o StrictHostKeyChecking=no "$VM_USERNAME@$IP_ADDRESS"
     fi
+}
+
+# Apple Silicon advertises SVE flags to Linux guests but the underlying CPU
+# has no SVE implementation, so cryptography 47+ (OpenSSL 4) SIGILLs on
+# import. See pyca/cryptography#14733.
+function disable_sve {
+    log_output "[HOST] Disabling guest SVE (pyca/cryptography#14733)"
+    ssh_command "sudo sed -i 's|GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"arm64.nosve\"|' /etc/default/grub"
+    ssh_command "sudo update-grub >/dev/null 2>&1"
+    ssh_command "sudo nohup reboot >/dev/null 2>&1 &" || true
+
+    sleep 8
+    log_output "[HOST] Waiting for VM to come back after SVE-disable reboot"
+    until SSHPASS=$VM_PASSWORD sshpass -e ssh -q -o ConnectTimeout=1 -o StrictHostKeyChecking=no "$VM_USERNAME@$IP_ADDRESS" true 2>/dev/null; do
+        sleep 1
+    done
 }
 
 function qemu_ssh_command() {
@@ -151,6 +188,8 @@ function qemu_breakpoint {
 function test_sequoia {
     boot_vm "ghcr.io/cirruslabs/macos-sequoia-vanilla:latest" amunsonoma
 
+    setup_vm_key
+
     ssh_command sudo networksetup -setdnsservers "Ethernet" "8.8.8.8"
     ssh_command cp "'/Volumes/My Shared Files/dev/amun/amun'" "~/amun"
     ssh_command chmod +x "~/amun"
@@ -158,7 +197,7 @@ function test_sequoia {
 
     for plugin in "${PLUGINS[@]}"; do
         log_output "[HOST] Running plugin: ${plugin}"
-        ssh_command "AMUN_REPO='/Volumes/My Shared Files/dev/amun-${plugin}' ./amun ${plugin}"
+        ssh_command_key "AMUN_REPO='/Volumes/My Shared Files/dev/amun-${plugin}' ./amun ${plugin}"
     done
 
     breakpoint
@@ -169,6 +208,10 @@ function test_sequoia {
 function test_debian {
     boot_vm "ghcr.io/cirruslabs/debian:bookworm" amunbookworm
 
+    disable_sve
+
+    setup_vm_key
+
     ssh_command sudo mkdir /mnt/shared
     ssh_command sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
     ssh_command sudo systemctl stop unattended-upgrades
@@ -178,7 +221,7 @@ function test_debian {
 
     for plugin in "${PLUGINS[@]}"; do
         log_output "[HOST] Running plugin: ${plugin}"
-        ssh_command "AMUN_REPO='/mnt/shared/dev/amun-${plugin}' ./amun ${plugin}"
+        ssh_command_key "AMUN_REPO='/mnt/shared/dev/amun-${plugin}' ./amun ${plugin}"
     done
 
     breakpoint
@@ -189,6 +232,10 @@ function test_debian {
 function test_ubuntu {
     boot_vm "ghcr.io/cirruslabs/ubuntu:24.04" amunnoble
 
+    disable_sve
+
+    setup_vm_key
+
     ssh_command sudo mkdir /mnt/shared
     ssh_command sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
     ssh_command cp "/mnt/shared/dev/amun/amun" "~/amun"
@@ -197,7 +244,7 @@ function test_ubuntu {
 
     for plugin in "${PLUGINS[@]}"; do
         log_output "[HOST] Running plugin: ${plugin}"
-        ssh_command "AMUN_REPO='/mnt/shared/dev/amun-${plugin}' ./amun ${plugin}"
+        ssh_command_key "AMUN_REPO='/mnt/shared/dev/amun-${plugin}' ./amun ${plugin}"
     done
 
     breakpoint
