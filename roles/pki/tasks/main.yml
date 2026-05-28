@@ -78,6 +78,20 @@
               /tmp/{{ pki_ca_name }}.crt
           become: true
           when: pki_new_fp_hex not in (pki_keychain_fps.stdout_lines | default([]))
+          register: pki_add_trusted_cert
+          failed_when:
+            - pki_add_trusted_cert.rc | default(0) != 0
+            - "'authorization was denied since no user interaction was possible' not in (pki_add_trusted_cert.stderr | default(''))"
+
+        - name: macOS - flag when trust install needs interactive auth
+          ansible.builtin.debug:
+            msg: >-
+              CA cert downloaded but System.keychain trust mutation needs
+              Touch ID / GUI auth (non-interactive run). Re-run amun
+              interactively (terminal with Touch ID available) to complete trust.
+          when:
+            - pki_add_trusted_cert.rc | default(0) != 0
+            - "'authorization was denied since no user interaction was possible' in (pki_add_trusted_cert.stderr | default(''))"
 
         - name: Remove tempfile
           ansible.builtin.file:
