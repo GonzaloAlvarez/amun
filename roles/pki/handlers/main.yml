@@ -1,0 +1,8 @@
+---
+- name: Refresh CA trust (Debian)
+  ansible.builtin.command: update-ca-certificates
+  become: true
+
+- name: Refresh CA trust (Arch)
+  ansible.builtin.command: update-ca-trust
+  become: true

@@ -1,0 +1,5 @@
+---
+pki_ca_url: "http://pki.lan/cert/ca.crt"
+pki_ca_name: "cn-pki-root"
+pki_probe_timeout: 3
+pki_macos_keychain: "/Library/Keychains/System.keychain"

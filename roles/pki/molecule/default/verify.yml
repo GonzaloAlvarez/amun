@@ -1,0 +1,32 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Cert file installed in /usr/local/share/ca-certificates/
+      ansible.builtin.stat:
+        path: /usr/local/share/ca-certificates/cn-pki-root.crt
+      register: cn_pki_cert
+      failed_when: not cn_pki_cert.stat.exists
+
+    - name: Installed cert subject matches the mock CA
+      ansible.builtin.command:
+        cmd: openssl x509 -in /usr/local/share/ca-certificates/cn-pki-root.crt -noout -subject
+      register: cert_subject
+      changed_when: false
+      failed_when: "'amun-test-ca' not in cert_subject.stdout"
+
+    - name: Cert symlink present in /etc/ssl/certs/
+      ansible.builtin.shell:
+        cmd: "ls /etc/ssl/certs/ | grep -i cn-pki"
+      args:
+        executable: /bin/bash
+      register: ssl_certs_check
+      changed_when: false
+      failed_when: ssl_certs_check.rc != 0
+
+    - name: Trust store actually trusts our CA (offline openssl verify)
+      ansible.builtin.command:
+        cmd: openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt /usr/local/share/ca-certificates/cn-pki-root.crt
+      register: trust_verify
+      changed_when: false
+      failed_when: trust_verify.rc != 0

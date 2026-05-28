@@ -1,0 +1,7 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    pki_ca_url: "http://localhost:8000/cert/ca.crt"
+  roles:
+    - role: pki

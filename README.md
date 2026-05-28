@@ -38,6 +38,19 @@ bash <(wget -qO- https://raw.githubusercontent.com/gonzaloalvarez/amun/main/amun
 - 🧮 **Reproducible environments:** ensures consistent system states across machines  
 - 🧑‍💻 **Developer-friendly testing:** built-in testing and debugging modes for validation and exploration
 
+## Core roles
+
+| Role | Purpose |
+|------|---------|
+| `permissions` | Add the current user to `/etc/sudoers` with `NOPASSWD`. |
+| `homebrew` | Install Homebrew on macOS. |
+| `utils` | Install the curated package set (apt / brew / pacman) and ensure `nvim` meets a minimum version. |
+| `pki` | Fetch the homelab step-ca root CA from `http://pki.lan/cert/ca.crt` and install it into the OS trust store (Debian/Ubuntu/Arch trust dirs, macOS System keychain). Silently skips when the PKI host is unreachable, so the playbook stays green off-LAN. |
+| `dotfiles` | Clone and install `dotfiles` and `gear`. |
+| `config` | Apply OS-level UI/locale/keyboard configuration. |
+| `ufw` | Install and enable UFW with a default-deny policy on Linux. |
+| `remoteaccess` | Install OpenSSH, harden sshd, and trust the master SSH public key. |
+
 ## Development
 
 Developers can easily build, test, and validate **amun** locally.

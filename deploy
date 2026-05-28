@@ -3,13 +3,14 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR=$(mktemp -d)
-CORE_ROLES=("permissions" "utils" "dotfiles" "config")
+CORE_ROLES=("permissions" "utils" "pki" "dotfiles" "config")
 
 trap 'rm -rf "$VENV_DIR"' EXIT SIGINT SIGTERM
 
 IPS=()
 PLUGINS=()
 SSH_USER="$USER"
+SSH_KEY=""
 PLUGIN_MODE=""
 
 while [[ $# -gt 0 ]]; do
@@ -35,9 +36,14 @@ while [[ $# -gt 0 ]]; do
             SSH_USER="$1"
             shift
             ;;
+        -i)
+            shift
+            SSH_KEY="$1"
+            shift
+            ;;
         -*)
             echo "Unknown flag: $1"
-            echo "Usage: $0 <ip1> [ip2 ...] [-p plugin ...] [-P plugin ...] [-u user]"
+            echo "Usage: $0 <ip1> [ip2 ...] [-p plugin ...] [-P plugin ...] [-u user] [-i key]"
             exit 1
             ;;
         *)
@@ -48,23 +54,33 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ${#IPS[@]} -eq 0 ]]; then
-    echo "Usage: $0 <ip1> [ip2 ...] [-p plugin ...] [-P plugin ...] [-u user]"
+    echo "Usage: $0 <ip1> [ip2 ...] [-p plugin ...] [-P plugin ...] [-u user] [-i key]"
     echo ""
     echo "  (no flags)  Run core amun roles only"
     echo "  -p          Run core amun roles + specified plugins"
     echo "  -P          Run only specified plugins (no core roles)"
     echo "  -u          SSH user (default: \$USER)"
+    echo "  -i          SSH private key file (skips SSH password prompt)"
     echo ""
     echo "Examples:"
     echo "  $0 10.0.0.5"
     echo "  $0 10.0.0.5 10.0.0.6 -p docker -u admin"
     echo "  $0 10.0.0.5 -P docker"
+    echo "  $0 10.0.0.5 -i ~/.ssh/id_ed25519"
     exit 1
 fi
 
 if [[ "$PLUGIN_MODE" == "upper" && ${#PLUGINS[@]} -eq 0 ]]; then
     echo "Error: -P requires at least one plugin name"
     exit 1
+fi
+
+if [[ -n "$SSH_KEY" ]]; then
+    SSH_KEY="${SSH_KEY/#\~/$HOME}"
+    if [[ ! -f "$SSH_KEY" ]]; then
+        echo "Error: SSH key file not found: $SSH_KEY"
+        exit 1
+    fi
 fi
 
 echo "==> Setting up ansible environment..."
@@ -135,6 +151,9 @@ done
     echo ""
     echo "[all:vars]"
     echo "ansible_user=$SSH_USER"
+    if [[ -n "$SSH_KEY" ]]; then
+        echo "ansible_ssh_private_key_file=$SSH_KEY"
+    fi
 } > "$VENV_DIR/inventory"
 
 ROLES=()
@@ -158,12 +177,19 @@ done
 echo ""
 echo "==> Targets:  ${IPS[*]}"
 echo "==> SSH user: $SSH_USER"
+if [[ -n "$SSH_KEY" ]]; then
+    echo "==> SSH key:  $SSH_KEY"
+fi
 echo "==> Roles:    ${ROLES[*]}"
 echo ""
+
+ASK_PASS_FLAGS=("--ask-become-pass")
+if [[ -z "$SSH_KEY" ]]; then
+    ASK_PASS_FLAGS=("--ask-pass" "${ASK_PASS_FLAGS[@]}")
+fi
 
 ANSIBLE_CONFIG="$VENV_DIR/ansible.cfg" \
     "$VENV_DIR/bin/ansible-playbook" \
     -i "$VENV_DIR/inventory" \
     "$VENV_DIR/playbook.yml" \
-    --ask-pass \
-    --ask-become-pass
+    "${ASK_PASS_FLAGS[@]}"

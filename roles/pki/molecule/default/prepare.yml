@@ -1,0 +1,43 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Install openssl, python3, ca-certificates
+      ansible.builtin.apt:
+        name:
+          - openssl
+          - python3
+          - ca-certificates
+        state: present
+        update_cache: true
+      become: true
+
+    - name: Make mock pki serving dir
+      ansible.builtin.file:
+        path: /srv/mock-pki/cert
+        state: directory
+        mode: "0755"
+      become: true
+
+    - name: Generate mock root CA
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -newkey rsa:2048 -nodes
+          -keyout /tmp/test-ca.key
+          -out /srv/mock-pki/cert/ca.crt
+          -subj /CN=amun-test-ca
+          -days 1
+        creates: /srv/mock-pki/cert/ca.crt
+      become: true
+
+    - name: Start mock pki HTTP server on :8000
+      ansible.builtin.shell:
+        cmd: "nohup python3 -m http.server 8000 --directory /srv/mock-pki >/tmp/mock-pki.log 2>&1 &"
+      args:
+        executable: /bin/bash
+      become: true
+
+    - name: Wait for mock server
+      ansible.builtin.wait_for:
+        port: 8000
+        timeout: 10

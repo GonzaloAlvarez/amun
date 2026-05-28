@@ -3,7 +3,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR=$(mktemp -d)
-TESTABLE_ROLES=("permissions" "dotfiles" "utils" "remoteaccess" "ufw")
+TESTABLE_ROLES=("permissions" "dotfiles" "utils" "remoteaccess" "ufw" "pki")
 
 trap 'rm -rf "$VENV_DIR"; rm -rf "$SCRIPT_DIR/.venv"' EXIT SIGINT SIGTERM
 

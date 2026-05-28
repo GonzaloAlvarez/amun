@@ -1,0 +1,85 @@
+---
+- name: Probe PKI host reachability
+  ansible.builtin.uri:
+    url: "{{ pki_ca_url }}"
+    method: HEAD
+    timeout: "{{ pki_probe_timeout }}"
+    status_code: [200, 405]
+    return_content: false
+  register: pki_probe
+  failed_when: false
+  changed_when: false
+
+- name: PKI unreachable - skipping CA cert refresh
+  ansible.builtin.debug:
+    msg: "{{ pki_ca_url }} unreachable (status={{ pki_probe.status | default('n/a') }}); skipping"
+  when: pki_probe.status | default(0) not in [200, 405]
+
+- name: Install / refresh homelab CA certificate
+  when: pki_probe.status | default(0) in [200, 405]
+  block:
+    - name: Download CA cert (Debian/Ubuntu)
+      ansible.builtin.get_url:
+        url: "{{ pki_ca_url }}"
+        dest: "/usr/local/share/ca-certificates/{{ pki_ca_name }}.crt"
+        mode: "0644"
+        force: true
+      become: true
+      notify: Refresh CA trust (Debian)
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Download CA cert (Arch)
+      ansible.builtin.get_url:
+        url: "{{ pki_ca_url }}"
+        dest: "/etc/ca-certificates/trust-source/anchors/{{ pki_ca_name }}.crt"
+        mode: "0644"
+        force: true
+      become: true
+      notify: Refresh CA trust (Arch)
+      when: ansible_facts['os_family'] == 'Archlinux'
+
+    - name: macOS - install into System.keychain
+      when: ansible_facts['os_family'] == 'Darwin'
+      block:
+        - name: Download CA cert to temp file
+          ansible.builtin.get_url:
+            url: "{{ pki_ca_url }}"
+            dest: "/tmp/{{ pki_ca_name }}.crt"
+            mode: "0644"
+            force: true
+
+        - name: Fingerprint downloaded cert
+          ansible.builtin.command:
+            cmd: "openssl x509 -in /tmp/{{ pki_ca_name }}.crt -noout -fingerprint -sha256"
+          register: pki_new_fp
+          changed_when: false
+
+        - name: Normalize fingerprint to bare hex
+          ansible.builtin.set_fact:
+            pki_new_fp_hex: "{{ pki_new_fp.stdout.split('=')[-1] | replace(':', '') | upper }}"
+
+        - name: List System.keychain SHA-256 fingerprints
+          ansible.builtin.shell:
+            cmd: |
+              set -o pipefail
+              security find-certificate -a -Z {{ pki_macos_keychain }} \
+                | awk '/^SHA-256 hash:/ {print toupper($3)}'
+          args:
+            executable: /bin/bash
+          register: pki_keychain_fps
+          changed_when: false
+          failed_when: false
+
+        - name: Add CA cert to System.keychain
+          ansible.builtin.command:
+            cmd: >-
+              security add-trusted-cert -d -r trustRoot
+              -k {{ pki_macos_keychain }}
+              /tmp/{{ pki_ca_name }}.crt
+          become: true
+          when: pki_new_fp_hex not in (pki_keychain_fps.stdout_lines | default([]))
+
+        - name: Remove tempfile
+          ansible.builtin.file:
+            path: "/tmp/{{ pki_ca_name }}.crt"
+            state: absent
