@@ -190,7 +190,20 @@ function test_sequoia {
 
     setup_vm_key
 
-    ssh_command sudo networksetup -setdnsservers "Ethernet" "8.8.8.8"
+    # Prefer the homelab LAN gateway (10.0.0.1) as primary DNS so .lan
+    # hostnames resolve inside the guest (8.8.8.8 alone doesn't know them).
+    # Probe via TCP/53 because Apple's Virtualization.framework shared net
+    # silently drops ICMP from the guest. Fall back to 8.8.8.8 only when
+    # 10.0.0.1:53 is not reachable.
+    log_output "[HOST] Probing whether 10.0.0.1:53 is reachable from guest"
+    if ssh_command "/usr/bin/nc -z -G 2 -w 2 10.0.0.1 53 > /dev/null 2>&1"; then
+        log_output "[HOST] 10.0.0.1 reachable; using as primary DNS with 8.8.8.8 fallback"
+        ssh_command sudo networksetup -setdnsservers "Ethernet" "10.0.0.1" "8.8.8.8"
+    else
+        log_output "[HOST] 10.0.0.1 unreachable; using 8.8.8.8 only"
+        ssh_command sudo networksetup -setdnsservers "Ethernet" "8.8.8.8"
+    fi
+
     ssh_command cp "'/Volumes/My Shared Files/dev/amun/amun'" "~/amun"
     ssh_command chmod +x "~/amun"
     ssh_command "AMUN_REPO='/Volumes/My Shared Files/dev/amun' ./amun"
