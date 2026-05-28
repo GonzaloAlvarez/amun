@@ -13,20 +13,53 @@
   until: result is not failed
   when: ansible_facts['os_family'] == 'Debian'
 
-- name: Ensure the different utilities are installed (mac)
-  community.general.homebrew:
-    name: "{{ homebrew_packages }}"
-    state: present
-    update_homebrew: true
+- name: Update homebrew taps (mac)
+  ansible.builtin.command:
+    cmd: brew update
+  environment:
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+  changed_when: false
   when: ansible_facts['os_family'] == 'Darwin'
 
-- name: Ensure the extra utilities are installed (mac)
-  community.general.homebrew_cask:
-    name: "{{ item }}"
-    state: present
-  loop: "{{ homebrew_cask_packages }}"
-  ignore_errors: true
+- name: List currently installed brew formulae (mac)
+  ansible.builtin.command:
+    cmd: brew list --formula -1
+  environment:
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+  register: brew_installed_formulae
+  changed_when: false
   when: ansible_facts['os_family'] == 'Darwin'
+
+- name: Install missing brew formulae (mac)
+  ansible.builtin.command:
+    cmd: "brew install {{ item }}"
+  environment:
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+  loop: "{{ homebrew_packages }}"
+  when:
+    - ansible_facts['os_family'] == 'Darwin'
+    - item not in brew_installed_formulae.stdout_lines
+
+- name: List currently installed brew casks (mac)
+  ansible.builtin.command:
+    cmd: brew list --cask -1
+  environment:
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+  register: brew_installed_casks
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Darwin'
+
+- name: Install missing brew casks (mac)
+  ansible.builtin.command:
+    cmd: "brew install --cask {{ item }}"
+  environment:
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+  loop: "{{ homebrew_cask_packages }}"
+  when:
+    - ansible_facts['os_family'] == 'Darwin'
+    - item not in (brew_installed_casks.stdout_lines | default([]))
+  ignore_errors: true
 
 - name: Ensure the different utilitis are installed (linux)
   package:
