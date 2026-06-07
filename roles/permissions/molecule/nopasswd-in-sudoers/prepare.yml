@@ -1,0 +1,36 @@
+---
+# Case C: NOPASSWD already inline in /etc/sudoers (post-amun steady state).
+# Second and subsequent amun runs should land here; the role must detect the
+# existing line and skip the write entirely (idempotence).
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install sudo
+      ansible.builtin.apt:
+        name: sudo
+        state: present
+
+    - name: Create testuser in the sudo group
+      ansible.builtin.user:
+        name: testuser
+        password: "$6$amuntst$wfy23Op6rFzgblUFOlGKpueGA4pxneZs6Q1rarqDCyJVB6YbQwUAvfAEdEpg9OXUOu0Tkq0mYspVxEZsNy.YN0"
+        groups: sudo
+        shell: /bin/bash
+        create_home: true
+
+    - name: Append NOPASSWD line for testuser to /etc/sudoers
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        line: 'testuser ALL=(ALL) NOPASSWD: ALL'
+        validate: /usr/sbin/visudo -cf %s
+
+    - name: Ensure no leftover testuser drop-in
+      ansible.builtin.file:
+        path: /etc/sudoers.d/testuser
+        state: absent

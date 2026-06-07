@@ -8,11 +8,38 @@
   set_fact:
     current_user: "{{ current_user_result.stdout }}"
 
-- name: Check if user is already in sudoers
-  command: "sudo grep -q '{{ current_user }} ALL=(ALL) NOPASSWD: ALL' /etc/sudoers"
-  register: sudoers_check
+- name: Read /etc/sudoers
+  ansible.builtin.slurp:
+    src: /etc/sudoers
+  register: sudoers_main_raw
+  become: true
+
+- name: List /etc/sudoers.d entries
+  ansible.builtin.find:
+    paths: /etc/sudoers.d
+    file_type: file
+  register: sudoers_d_listing
+  become: true
   failed_when: false
-  changed_when: false
+
+- name: Read each /etc/sudoers.d entry
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  register: sudoers_d_raw
+  become: true
+  loop: "{{ sudoers_d_listing.files | default([]) }}"
+
+- name: Determine whether the current user already has a NOPASSWD entry
+  ansible.builtin.set_fact:
+    sudoers_has_nopasswd: >-
+      {{
+        (
+          [sudoers_main_raw.content | b64decode]
+          + (sudoers_d_raw.results | default([]) | map(attribute='content') | map('b64decode') | list)
+        )
+        | map('regex_findall', '(?m)^\s*' ~ current_user ~ '\s+ALL=\(ALL(?::ALL)?\)\s+NOPASSWD:\s*ALL\s*$')
+        | flatten | length > 0
+      }}
 
 - name: Add user to sudoers with NOPASSWD if not already present
   lineinfile:
@@ -21,4 +48,4 @@
     validate: /usr/sbin/visudo -cf %s
     state: present
   become: true
-  when: sudoers_check.rc != 0
+  when: not sudoers_has_nopasswd

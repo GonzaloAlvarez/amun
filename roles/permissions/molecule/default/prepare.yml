@@ -1,15 +1,48 @@
 ---
+# Case A: stock Debian — primary user is in the `sudo` group, no NOPASSWD
+# anywhere. Mirrors what `user-setup` produces on Debian when the installer
+# is run without a root password. Ansible must collect a sudo password via
+# `-K` (here: ansible_become_password) for the role to work.
 - name: Prepare
   hosts: all
+  become: true
   tasks:
     - name: Update apt cache
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 3600
-      become: true
 
     - name: Install sudo
       ansible.builtin.apt:
         name: sudo
         state: present
-      become: true
+
+    - name: Create testuser in the sudo group with a known password
+      ansible.builtin.user:
+        name: testuser
+        # Pre-computed sha512crypt of "testpass" (openssl passwd -6 -salt amuntst testpass).
+        # Avoids depending on `password_hash` filter, which needs libxcrypt/passlib on
+        # the controller (broken on Python 3.13 by default).
+        password: "$6$amuntst$wfy23Op6rFzgblUFOlGKpueGA4pxneZs6Q1rarqDCyJVB6YbQwUAvfAEdEpg9OXUOu0Tkq0mYspVxEZsNy.YN0"
+        groups: sudo
+        shell: /bin/bash
+        create_home: true
+
+    - name: Ensure the default %sudo rule requires a password
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        regexp: '^%sudo\s'
+        line: '%sudo ALL=(ALL:ALL) ALL'
+        validate: /usr/sbin/visudo -cf %s
+
+    - name: Remove any stray NOPASSWD line for testuser in /etc/sudoers
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        regexp: '^\s*testuser\s+.*NOPASSWD'
+        state: absent
+        validate: /usr/sbin/visudo -cf %s
+
+    - name: Remove any testuser drop-in under /etc/sudoers.d
+      ansible.builtin.file:
+        path: /etc/sudoers.d/testuser
+        state: absent

@@ -1,0 +1,51 @@
+---
+- name: Verify (root inspection)
+  hosts: all
+  tasks:
+    - name: Count NOPASSWD lines for testuser in /etc/sudoers
+      ansible.builtin.shell: |
+        set -o pipefail
+        grep -cE '^\s*testuser\s+ALL=\(ALL\)\s+NOPASSWD:\s*ALL\s*$' /etc/sudoers || true
+      args:
+        executable: /bin/bash
+      register: nopasswd_in_main
+      changed_when: false
+
+    - name: Assert role did NOT duplicate into /etc/sudoers (drop-in already covers it)
+      ansible.builtin.assert:
+        that:
+          - nopasswd_in_main.stdout | int == 0
+        fail_msg: >-
+          Role unexpectedly added a NOPASSWD line for testuser to /etc/sudoers
+          even though /etc/sudoers.d/testuser already grants it. Count:
+          {{ nopasswd_in_main.stdout }}.
+
+    - name: Stat the original drop-in
+      ansible.builtin.stat:
+        path: /etc/sudoers.d/testuser
+      register: dropin
+
+    - name: Assert /etc/sudoers.d/testuser is preserved
+      ansible.builtin.assert:
+        that:
+          - dropin.stat.exists
+        fail_msg: /etc/sudoers.d/testuser was removed by the role.
+
+- name: Verify (as testuser — visudo under become works without password)
+  hosts: all
+  vars:
+    ansible_user: testuser
+  tasks:
+    - name: Run visudo -cf under become as testuser
+      ansible.builtin.command: /usr/sbin/visudo -cf /etc/sudoers
+      become: true
+      register: visudo_check
+      changed_when: false
+
+    - name: Assert visudo -cf succeeded under become without a password prompt
+      ansible.builtin.assert:
+        that:
+          - visudo_check.rc == 0
+        fail_msg: >-
+          visudo -cf returned rc={{ visudo_check.rc }} under become for
+          testuser whose NOPASSWD is granted via /etc/sudoers.d/testuser.

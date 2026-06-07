@@ -11,15 +11,16 @@
       register: nopasswd_count
       changed_when: false
 
-    - name: Assert exactly one NOPASSWD line for testuser in /etc/sudoers
+    - name: Assert exactly one NOPASSWD line for testuser (no duplicate)
       ansible.builtin.assert:
         that:
           - nopasswd_count.stdout | int == 1
         fail_msg: >-
-          Expected exactly one NOPASSWD line for testuser in /etc/sudoers,
-          found {{ nopasswd_count.stdout }}.
+          Expected exactly one NOPASSWD line for testuser in /etc/sudoers
+          (prepare wrote it; role should be idempotent and not duplicate).
+          Found {{ nopasswd_count.stdout }}.
 
-- name: Verify (as testuser — the role's promise)
+- name: Verify (as testuser — visudo under become works without password)
   hosts: all
   vars:
     ansible_user: testuser
@@ -36,5 +37,3 @@
           - visudo_check.rc == 0
         fail_msg: >-
           visudo -cf returned rc={{ visudo_check.rc }} under become.
-          This would only happen if become escalation prompted for a password
-          (which the role just configured NOPASSWD to avoid).

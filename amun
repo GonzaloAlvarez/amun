@@ -52,6 +52,12 @@ try:
 
     ask_sudo = ""
     if len(sys.argv) <= 1:
+        # Invalidate the cached sudo timestamp first so the probe answers the
+        # sudoers policy, not whatever happens to be cached from a prior `sudo`
+        # in this shell. Without -k, `sudo -n true` can pass on a stale cache
+        # while Ansible's no-TTY become subprocess later fails with
+        # "sudo: a password is required".
+        subprocess.run(["sudo", "-k"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             subprocess.run(["sudo", "-n", "true"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except subprocess.CalledProcessError:

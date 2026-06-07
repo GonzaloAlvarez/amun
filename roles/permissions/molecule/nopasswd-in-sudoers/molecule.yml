@@ -2,7 +2,7 @@
 driver:
   name: docker
 platforms:
-  - name: permissions-stock-debian
+  - name: permissions-nopasswd-in-sudoers
     image: geerlingguy/docker-debian12-ansible:latest
     privileged: true
     volumes:

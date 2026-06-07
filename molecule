@@ -5,26 +5,49 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR=$(mktemp -d)
 TESTABLE_ROLES=("permissions" "dotfiles" "utils" "remoteaccess" "ufw" "pki")
 
+# Map role -> space-separated scenario list. Avoid `declare -A` so this stays
+# compatible with macOS's bash 3.2.
+role_scenarios() {
+    case "$1" in
+        permissions) echo "default nopasswd-dropin nopasswd-in-sudoers" ;;
+        *)           echo "default" ;;
+    esac
+}
+
 trap 'rm -rf "$VENV_DIR"; rm -rf "$SCRIPT_DIR/.venv"' EXIT SIGINT SIGTERM
 
 python3 -m venv "$VENV_DIR"
 "$VENV_DIR/bin/pip" install --upgrade pip setuptools wheel > /dev/null 2>&1
-"$VENV_DIR/bin/pip" install ansible molecule 'molecule-plugins[docker]' > /dev/null 2>&1
+"$VENV_DIR/bin/pip" install ansible molecule 'molecule-plugins[docker]' passlib > /dev/null 2>&1
 
 export PATH="$VENV_DIR/bin:$PATH"
+
+run_role_scenarios() {
+    local role="$1"
+    cd "$SCRIPT_DIR/roles/$role"
+    for scenario in $(role_scenarios "$role"); do
+        echo "----------------------------------------"
+        echo "Scenario: $role/$scenario"
+        echo "----------------------------------------"
+        molecule test -s "$scenario"
+    done
+}
 
 if [ $# -gt 0 ] && [[ " ${TESTABLE_ROLES[@]} " =~ " $1 " ]]; then
     ROLE="$1"
     shift
-    cd "$SCRIPT_DIR/roles/$ROLE"
-    molecule "${@:-test}"
+    if [ $# -eq 0 ]; then
+        run_role_scenarios "$ROLE"
+    else
+        cd "$SCRIPT_DIR/roles/$ROLE"
+        molecule "$@"
+    fi
 elif [ $# -eq 0 ]; then
     for role in "${TESTABLE_ROLES[@]}"; do
         echo "========================================"
         echo "Testing role: $role"
         echo "========================================"
-        cd "$SCRIPT_DIR/roles/$role"
-        molecule test
+        run_role_scenarios "$role"
     done
 else
     echo "Usage: $0 [role] [molecule-command]"

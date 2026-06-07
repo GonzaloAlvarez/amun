@@ -3,6 +3,5 @@
   hosts: all
   vars:
     ansible_user: testuser
-    ansible_become_password: testpass
   roles:
     - role: permissions

@@ -1,0 +1,41 @@
+---
+# Case B: NOPASSWD granted via an /etc/sudoers.d/<user> drop-in. Matches the
+# Ubuntu / cloud-init pattern (90-cloud-init-users). The role must detect the
+# existing NOPASSWD and NOT duplicate it into /etc/sudoers.
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install sudo
+      ansible.builtin.apt:
+        name: sudo
+        state: present
+
+    - name: Create testuser in the sudo group
+      ansible.builtin.user:
+        name: testuser
+        password: "$6$amuntst$wfy23Op6rFzgblUFOlGKpueGA4pxneZs6Q1rarqDCyJVB6YbQwUAvfAEdEpg9OXUOu0Tkq0mYspVxEZsNy.YN0"
+        groups: sudo
+        shell: /bin/bash
+        create_home: true
+
+    - name: Drop NOPASSWD entry for testuser under /etc/sudoers.d
+      ansible.builtin.copy:
+        content: "testuser ALL=(ALL) NOPASSWD: ALL\n"
+        dest: /etc/sudoers.d/testuser
+        owner: root
+        group: root
+        mode: '0440'
+        validate: /usr/sbin/visudo -cf %s
+
+    - name: Ensure no stray NOPASSWD line for testuser in /etc/sudoers
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        regexp: '^\s*testuser\s+.*NOPASSWD'
+        state: absent
+        validate: /usr/sbin/visudo -cf %s
