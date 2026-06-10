@@ -77,7 +77,13 @@ function boot_vm {
 	TART_NO_AUTO_PRUNE="" tart clone "$BASE_IMAGE" "$INSTANCE_NAME"
 	trap 'log_output "[HOST] Killing the VM"; tart delete $INSTANCE_NAME; cleanup' SIGINT SIGTERM
 
-	tart run --no-graphics --vnc --dir dev:.. "$INSTANCE_NAME" 2>/dev/null >/dev/null &
+	# --vnc-experimental (not --vnc) is required for Linux guests — `--vnc`
+	# is Apple Screen Sharing (macOS guests only) and binds no host port for
+	# Linux. Tee the URL to /tmp/tart-<vm>.log so the operator can attach a
+	# VNC viewer (the URL is printed once on stdout by tart at startup).
+	TART_LOG="/tmp/tart-${INSTANCE_NAME}.log"
+	: > "$TART_LOG"
+	tart run --no-graphics --vnc-experimental --dir dev:.. "$INSTANCE_NAME" >>"$TART_LOG" 2>&1 &
 
 	log_output "[HOST] Waiting for VM to boot"
 	IP_ADDRESS=$(tart ip "$INSTANCE_NAME" 2>/dev/null)
@@ -87,6 +93,20 @@ function boot_vm {
 	done
 
     log_output "[HOST] Machine is launching on $IP_ADDRESS"
+
+    # Surface the VNC URL as soon as tart prints it (Linux guests have no
+    # built-in UI, so visual verification requires the operator to attach
+    # a VNC viewer).
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        VNC_URL=$(grep -m1 -oE 'vnc://[^[:space:]]+' "$TART_LOG" 2>/dev/null || true)
+        [ -n "$VNC_URL" ] && break
+        sleep 1
+    done
+    if [ -n "$VNC_URL" ]; then
+        log_output "[HOST] VNC URL: $VNC_URL (full log: $TART_LOG)"
+    else
+        log_output "[HOST] VNC URL not yet visible — check $TART_LOG"
+    fi
 
 	ssh-keygen -R "$IP_ADDRESS" >/dev/null 2>/dev/null
 
