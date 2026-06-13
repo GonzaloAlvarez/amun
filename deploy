@@ -2,10 +2,11 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VENV_DIR=$(mktemp -d)
+VENV_DIR="$SCRIPT_DIR/.venv"
 CORE_ROLES=("permissions" "utils" "pki" "dotfiles" "config")
 
 trap 'rm -rf "$VENV_DIR"' EXIT SIGINT SIGTERM
+rm -rf "$VENV_DIR"
 
 IPS=()
 PLUGINS=()

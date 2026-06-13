@@ -13,8 +13,22 @@ echo "Please install python"
 exit 1
 ':'''
 
-import os, sys, subprocess, socket, shutil, pathlib
+import os, sys, signal, subprocess, socket, shutil, pathlib
 from urllib.request import urlretrieve
+
+# Tear down everything we ever wrote, on any exit path. SIGINT becomes
+# KeyboardInterrupt (covered by finally); SIGTERM does not, so promote it.
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
+
+PROVISIONING = pathlib.Path.home() / ".provisioning"
+
+def _cleanup():
+    shutil.rmtree(PROVISIONING, ignore_errors=True)
+    for shim in (pathlib.Path.home() / ".amun", pathlib.Path.home() / ".bt"):
+        try:
+            shim.unlink()
+        except FileNotFoundError:
+            pass
 
 in_venv = (hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix))
 try:
@@ -22,33 +36,38 @@ try:
 except:
     raise Exception("I couldn't reach internet. I need to bail out")
 
-venv = pathlib.Path.home() / ("Library/Application Support/amun/.venv" if sys.platform == "darwin" else ".local/share/amun/.venv")
+venv = PROVISIONING / ".venv"
 
 if not in_venv:
-    if not (venv / "bin" / "python").exists():
+    # Fresh slate every run: nothing amun-related survives across invocations.
+    shutil.rmtree(PROVISIONING, ignore_errors=True)
+    PROVISIONING.mkdir(parents=True, exist_ok=True)
+    try:
         print('Retrieving virtualenv...')
-        venv.parent.mkdir(parents=True, exist_ok=True)
-        urlretrieve("https://bootstrap.pypa.io/virtualenv.pyz", str(venv.parent / "virtualenv.pyz"))
-        subprocess.run(f'"{sys.executable}" "{venv.parent / "virtualenv.pyz"}" "{venv}"', shell=True, check=True)
-        os.remove(str(venv.parent / "virtualenv.pyz"))
+        urlretrieve("https://bootstrap.pypa.io/virtualenv.pyz", str(PROVISIONING / "virtualenv.pyz"))
+        subprocess.run(f'"{sys.executable}" "{PROVISIONING / "virtualenv.pyz"}" "{venv}"', shell=True, check=True)
+        os.remove(str(PROVISIONING / "virtualenv.pyz"))
         subprocess.run(f'"{venv}/bin/python" -m pip install --upgrade pip setuptools wheel paramiko', shell=True, check=True)
         subprocess.run(f'"{venv}/bin/python" -m pip install dulwich --config-settings "--build-option=--pure"', shell=True, check=True)
         subprocess.run(f'"{venv}/bin/python" -m pip install --upgrade ansible', shell=True, check=True)
+    except BaseException:
+        _cleanup()
+        raise
     os.execv(f'{venv}/bin/python', [f'{venv}/bin/python'] + sys.argv)
     sys.exit(0)
 
 import dulwich.porcelain
 
-shutil.rmtree(pathlib.Path.home() / ".provisioning", ignore_errors=True)
 try:
     repo_name = f"amun-{sys.argv[1]}" if len(sys.argv) > 1 else "amun"
+    target = PROVISIONING / repo_name
     if os.getenv('AMUN_REPO'):
-        shutil.copytree(os.getenv('AMUN_REPO'), pathlib.Path.home() / ".provisioning")
+        shutil.copytree(os.getenv('AMUN_REPO'), target)
     else:
-        dulwich.porcelain.clone(f"https://github.com/GonzaloAlvarez/{repo_name}.git", pathlib.Path.home() / ".provisioning")
+        dulwich.porcelain.clone(f"https://github.com/GonzaloAlvarez/{repo_name}.git", target)
 
-    if (pathlib.Path.home() / ".provisioning" / "requirements.yml").exists():
-        subprocess.run(f'"{venv}/bin/ansible-galaxy" install -r requirements.yml', shell=True, check=True, cwd=str(pathlib.Path.home() / ".provisioning"))
+    if (target / "requirements.yml").exists():
+        subprocess.run(f'"{venv}/bin/ansible-galaxy" install -r requirements.yml', shell=True, check=True, cwd=str(target))
 
     ask_sudo = ""
     if len(sys.argv) <= 1:
@@ -63,6 +82,6 @@ try:
         except subprocess.CalledProcessError:
             ask_sudo = "-K"
 
-    subprocess.run(f'"{venv}/bin/ansible-playbook" {ask_sudo} -i localhost, --connection=local --limit 127.0.0.1 -e ansible_python_interpreter=auto_silent main.yml', shell=True, check=True, cwd=str(pathlib.Path.home() / ".provisioning"))
+    subprocess.run(f'"{venv}/bin/ansible-playbook" {ask_sudo} -i localhost, --connection=local --limit 127.0.0.1 -e ansible_python_interpreter=auto_silent main.yml', shell=True, check=True, cwd=str(target))
 finally:
-    shutil.rmtree(pathlib.Path.home() / ".provisioning", ignore_errors=True)
+    _cleanup()
