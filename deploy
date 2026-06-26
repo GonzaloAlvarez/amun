@@ -189,7 +189,11 @@ if [[ -z "$SSH_KEY" ]]; then
     ASK_PASS_FLAGS=("--ask-pass" "${ASK_PASS_FLAGS[@]}")
 fi
 
-ANSIBLE_CONFIG="$VENV_DIR/ansible.cfg" \
+# Strip PYTHONPATH so an ambient ansible can't shadow this venv's ansible-core
+# on sys.path. A second ansible-core leaking in makes the controller fail to
+# deserialize module results ("Unknown profile name 'module_legacy_m2c'").
+PYTHONPATH="" \
+    ANSIBLE_CONFIG="$VENV_DIR/ansible.cfg" \
     "$VENV_DIR/bin/ansible-playbook" \
     -i "$VENV_DIR/inventory" \
     "$VENV_DIR/playbook.yml" \

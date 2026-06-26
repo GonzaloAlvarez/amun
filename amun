@@ -82,6 +82,17 @@ try:
         except subprocess.CalledProcessError:
             ask_sudo = "-K"
 
-    subprocess.run(f'"{venv}/bin/ansible-playbook" {ask_sudo} -i localhost, --connection=local --limit 127.0.0.1 -e ansible_python_interpreter=auto_silent main.yml', shell=True, check=True, cwd=str(target))
+    # Run modules under the venv's OWN python, not a discovered system one.
+    # With --connection=local, ansible_python_interpreter=auto_silent makes
+    # AnsiballZ execute every module under a discovered system interpreter. If
+    # that interpreter has its own (stale/partial) ansible-core, the module
+    # serializes its result with a different ansible-core than this venv's
+    # controller deserializes with -> "Module result deserialization failed:
+    # Unknown profile name 'module_legacy_m2c'". Pinning the interpreter to the
+    # venv python guarantees module side == controller side == one ansible-core.
+    # PYTHONPATH is stripped for the same reason: it must not leak an ambient
+    # ansible onto the venv's sys.path and shadow it.
+    run_env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    subprocess.run(f'"{venv}/bin/ansible-playbook" {ask_sudo} -i localhost, --connection=local --limit 127.0.0.1 -e ansible_python_interpreter="{venv}/bin/python" main.yml', shell=True, check=True, cwd=str(target), env=run_env)
 finally:
     _cleanup()
