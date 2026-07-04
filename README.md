@@ -20,13 +20,17 @@ You can install **amun** into your environment with a single command.
 This will automatically fetch and execute the amun script to prepare your workspace:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gonzaloalvarez/amun/main/amun)
+bash <(curl -fsSL https://go.gn.al/amun)
 ```
 or, if you are a bare debian install without curl, you can use:
 
 ```bash    
-bash <(wget -qO- https://raw.githubusercontent.com/gonzaloalvarez/amun/main/amun)
+bash <(wget -qO- https://go.gn.al/amun)
 ```
+
+> `https://go.gn.al/amun` is a Cloudflare redirect to
+> `https://raw.githubusercontent.com/gonzaloalvarez/amun/main/amun` (the raw URL
+> still works directly if you prefer).
 
 ## Features
 
