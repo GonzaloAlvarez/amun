@@ -6,6 +6,7 @@
     allow_downgrade: yes
     autoclean: yes
     autoremove: yes
+    force_apt_get: yes
   become: true
   retries: 5
   delay: 5
