@@ -70,6 +70,8 @@ termux_packages:
   - git
   - gnupg
   - jq
+  # ncurses-utils provides tput, used by the dotfiles bashrc (LESS_TERMCAP)
+  - ncurses-utils
   - neovim
   - openssh
   - procps

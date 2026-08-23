@@ -397,7 +397,7 @@ function test_termux {
     tx 'test ! -e "$HOME/.provisioning"' || { rc=1; log_output "[FAIL] ~/.provisioning not cleaned"; }
     tx "head -1 \"\$HOME/bin/amun\" | grep -q '^#!$TERMUX_PREFIX/bin/bash'" || { rc=1; log_output "[FAIL] wrapper shebang"; }
     tx 'cmp -s "$HOME/.local/lib/amun/amun-termux" /workspace/dev/amun/amun-termux' || { rc=1; log_output "[FAIL] installed amun-termux differs"; }
-    tx 'dpkg -s openssh tmux neovim jq rsync >/dev/null' || { rc=1; log_output "[FAIL] termux_packages missing"; }
+    tx 'dpkg -s openssh tmux neovim jq rsync ncurses-utils >/dev/null && command -v tput >/dev/null' || { rc=1; log_output "[FAIL] termux_packages missing"; }
 
     if [ "$mode" = "bootstrap" ]; then
         tx '! pgrep -f "(^|/)sshd$" >/dev/null' || { rc=1; log_output "[FAIL] sshd running despite skip"; }
