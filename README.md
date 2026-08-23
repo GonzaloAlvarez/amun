@@ -32,6 +32,44 @@ bash <(wget -qO- https://go.gn.al/amun)
 > `https://raw.githubusercontent.com/gonzaloalvarez/amun/main/amun` (the raw URL
 > still works directly if you prefer).
 
+### Termux (Android)
+
+Termux is its own platform with its own bootstrap (`amun-termux`) that runs
+the same `main.yml` and roles — no root, no sudo, packages via `pkg`, sshd on
+port 8022 with key-only auth. On a new device:
+
+```bash
+pkg install -y curl && bash <(curl -fsSL https://go.gn.al/amun-termux)
+```
+
+Plugins follow the usual convention (`... | bash -s -- <plugin>`), and after
+the first run the installed `~/bin/amun` command re-runs the Termux bootstrap.
+Skipped on Termux: `permissions` (no sudoers), `pki` (no OS trust store yet),
+`config`, and `ufw`. Detection is by the `TERMUX_VERSION` environment variable
+only — the standard `amun` script refuses to run when it is set and points
+here instead. Note: an `amun-termux` file exists at this repo's root, while
+`amun <plugin>` resolves plugin repos named `amun-<plugin>` — `amun termux` on
+a non-Android box is therefore a name collision that 404s; use the URL above.
+
+On Android 12+ the phantom process killer will eventually kill a background
+sshd: acquire the Termux wake lock (notification → "Acquire wakelock"), and/or
+relax the limit over adb:
+
+```bash
+adb shell device_config put activity_manager max_phantom_processes 2147483647
+```
+
+Testing (requires Docker; uses `termux/termux-docker:aarch64`):
+
+```bash
+./test termux-bootstrap   # fast: bootstrap + packages, no dotfiles/sshd
+./test termux             # complete provisioning, idempotence, sshd, dotfiles
+```
+
+Knobs: `TERMUX_DOCKER_IMAGE` (alternate image/tag), `TERMUX_DOCKER_UNCONFINED=0`
+(re-enable the default seccomp profile), `AMUN_KEEP_PROVISIONING=1` (keep
+`~/.provisioning` for debugging).
+
 ## Features
 
 - ⚙️ **Hybrid provisioning:** combines **Ansible** and **Python** for flexible, scriptable infrastructure management  

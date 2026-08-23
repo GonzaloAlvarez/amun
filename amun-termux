@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+#
+# Termux (Android) bootstrap for amun. A platform adapter, not a second
+# provisioning system: it prepares a Termux-compatible Ansible runtime and
+# runs the same main.yml/roles as the standard `amun` bootstrap, which cannot
+# run here (sudo probe, virtualenv.pyz, FHS paths).
+#
+#   pkg install -y curl && bash <(curl -fsSL https://go.gn.al/amun-termux)
+#   amun-termux [plugin]        # provisions amun or amun-<plugin>
+#
+# Env knobs (parity with the standard bootstrap where applicable):
+#   AMUN_REPO              use a local checkout instead of cloning
+#   AMUN_KEEP_PROVISIONING keep ~/.provisioning after the run (debug)
+#   AMUN_ANSIBLE_ARGS      extra ansible-playbook args (e.g. -e flags)
+set -euo pipefail
+
+# TERMUX_VERSION is the repo-wide Termux signal (never $PREFIX checks).
+if [ -z "${TERMUX_VERSION:-}" ]; then
+    echo "amun-termux: not a Termux environment; use https://go.gn.al/amun instead" >&2
+    exit 1
+fi
+
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+PROVISIONING="$HOME/.provisioning"
+VENV="$PROVISIONING/.venv"
+
+cleanup() {
+    if [ -z "${AMUN_KEEP_PROVISIONING:-}" ]; then
+        rm -rf "$PROVISIONING"
+    else
+        echo "==> Keeping bootstrap workspace at $PROVISIONING"
+    fi
+}
+trap cleanup EXIT INT TERM
+
+echo "==> Checking connectivity"
+timeout 3 bash -c 'exec 3<>/dev/tcp/8.8.8.8/53' 2>/dev/null || {
+    echo "amun-termux: I couldn't reach internet. I need to bail out" >&2
+    exit 1
+}
+
+# python-ensurepip-wheels makes stock `python -m venv` seed pip;
+# python-cryptography avoids a Rust build of the ansible-core dependency
+# (the venv sees it through --system-site-packages). clang arrives as a
+# python-pip Recommends and covers PyYAML's sdist build.
+missing=""
+for p in python python-pip python-ensurepip-wheels python-cryptography git; do
+    dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"
+done
+if [ -n "$missing" ]; then
+    echo "==> Installing Termux bootstrap dependencies:$missing"
+    pkg update -y
+    # shellcheck disable=SC2086
+    pkg install -y $missing
+fi
+
+rm -rf "$PROVISIONING"
+mkdir -p "$PROVISIONING"
+
+REPO_NAME="amun"
+if [ $# -ge 1 ] && [ -n "$1" ]; then
+    REPO_NAME="amun-$1"
+fi
+TARGET="$PROVISIONING/$REPO_NAME"
+
+if [ -n "${AMUN_REPO:-}" ]; then
+    echo "==> Using local repository: $AMUN_REPO"
+    mkdir -p "$TARGET"
+    tar -C "$AMUN_REPO" --exclude=.venv --exclude=tst -cf - . | tar -C "$TARGET" -xf -
+else
+    echo "==> Cloning $REPO_NAME"
+    git clone --depth 1 "https://github.com/GonzaloAlvarez/${REPO_NAME}.git" "$TARGET"
+fi
+
+echo "==> Creating Ansible environment"
+python3 -m venv --system-site-packages "$VENV"
+"$VENV/bin/pip" install --quiet --disable-pip-version-check --upgrade pip
+"$VENV/bin/pip" install --quiet --disable-pip-version-check "ansible-core==2.21.3"
+
+if [ -f "$TARGET/requirements.yml" ]; then
+    echo "==> Installing Ansible roles and collections"
+    (cd "$TARGET" && "$VENV/bin/ansible-galaxy" install -r requirements.yml)
+fi
+
+echo "==> Running amun for Termux"
+mkdir -p "$HOME/.ansible/tmp"
+export TMPDIR="${TMPDIR:-$PREFIX/tmp}"
+# Termux has no /bin/sh and no getpwnam-consistent home: pin the shell and
+# use absolute temp dirs so ~ expansion never resolves against pw_dir.
+export ANSIBLE_EXECUTABLE="$PREFIX/bin/sh"
+export ANSIBLE_LOCAL_TEMP="$HOME/.ansible/tmp"
+export ANSIBLE_REMOTE_TMP="$HOME/.ansible/tmp"
+cd "$TARGET"
+# PYTHONPATH is stripped for the same reason the standard bootstrap strips
+# it: ambient site-packages must not leak into module deserialization.
+PYTHONPATH= "$VENV/bin/ansible-playbook" \
+    -i localhost, --connection=local --limit 127.0.0.1 \
+    -e "ansible_python_interpreter=$VENV/bin/python" \
+    -e "ansible_remote_tmp=$HOME/.ansible/tmp" \
+    -e amun_platform=termux \
+    -e "amun_termux_prefix=$PREFIX" \
+    ${AMUN_ANSIBLE_ARGS:-} \
+    main.yml
+
+echo "==> Termux provisioning completed"

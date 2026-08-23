@@ -76,6 +76,9 @@ function boot_vm {
 	BASE_IMAGE=$1
 	INSTANCE_NAME=$2
 
+	# A leftover instance from an aborted run would make the clone fail
+	# silently and the harness would then talk to the stale VM.
+	tart delete "$INSTANCE_NAME" >/dev/null 2>&1 || true
 	TART_NO_AUTO_PRUNE="" tart clone "$BASE_IMAGE" "$INSTANCE_NAME"
 	trap 'log_output "[HOST] Killing the VM"; tart delete $INSTANCE_NAME; cleanup' SIGINT SIGTERM
 
@@ -337,12 +340,112 @@ function test_arch {
     return "$rc"
 }
 
+# --- Termux (Docker; termux/termux-docker userspace, no Android runtime) ---
+# The container mirrors a real device except for what the Termux app itself
+# provides, so tx() injects: TERMUX_VERSION (the repo-wide Termux signal) and
+# termux-exec's LD_PRELOAD (rewrites /bin/sh & /usr/bin/env shebangs — active
+# by default in the real app, not wired up in the image).
+TERMUX_DOCKER_IMAGE="${TERMUX_DOCKER_IMAGE:-termux/termux-docker:aarch64}"
+TERMUX_PREFIX="/data/data/com.termux/files/usr"
+TERMUX_CONTAINER="amun-termux-test-$$"
+
+function tx() {
+    docker exec --user system \
+        -e TERMUX_VERSION=docker \
+        -e "LD_PRELOAD=$TERMUX_PREFIX/lib/libtermux-exec-ld-preload.so" \
+        "$TERMUX_CONTAINER" "$TERMUX_PREFIX/bin/bash" -l -c "$*"
+}
+
+function termux_teardown {
+    docker rm -f "$TERMUX_CONTAINER" >/dev/null 2>&1 || true
+}
+
+function test_termux {
+    local mode="${1:-full}"
+    local rc=0
+
+    if ! docker info >/dev/null 2>&1; then
+        log_output "[HOST] Docker is required for termux tests"
+        return 1
+    fi
+
+    # ARM containers can trip Docker's default seccomp policy on
+    # personality(); unconfined by default, TERMUX_DOCKER_UNCONFINED=0 opts
+    # back into the default profile.
+    local SECOPT=()
+    if [ "${TERMUX_DOCKER_UNCONFINED:-1}" = "1" ]; then
+        SECOPT=(--security-opt seccomp=unconfined)
+    fi
+
+    log_output "[HOST] Testing Termux ($mode) with $TERMUX_DOCKER_IMAGE"
+    termux_teardown
+    docker run -d --name "$TERMUX_CONTAINER" "${SECOPT[@]}" \
+        -v "$(cd "$(dirname "$0")/.." && pwd):/workspace/dev:ro" \
+        "$TERMUX_DOCKER_IMAGE" sleep infinity >/dev/null
+    trap 'log_output "[HOST] Killing the termux container"; termux_teardown; cleanup' SIGINT SIGTERM
+
+    local ARGS=""
+    if [ "$mode" = "bootstrap" ]; then
+        ARGS="-e amun_skip_dotfiles=true -e amun_termux_start_sshd=false"
+    fi
+
+    # First run: the bootstrap itself, from the working tree.
+    tx 'cp /workspace/dev/amun/amun-termux "$HOME/amun-termux" && chmod +x "$HOME/amun-termux"' || rc=$?
+    tx "AMUN_REPO=/workspace/dev/amun AMUN_ANSIBLE_ARGS='$ARGS' \"\$HOME/amun-termux\"" || rc=$?
+
+    log_output "[HOST] Verifying Termux provisioning results"
+    tx 'test ! -e "$HOME/.provisioning"' || { rc=1; log_output "[FAIL] ~/.provisioning not cleaned"; }
+    tx "head -1 \"\$HOME/bin/amun\" | grep -q '^#!$TERMUX_PREFIX/bin/bash'" || { rc=1; log_output "[FAIL] wrapper shebang"; }
+    tx 'cmp -s "$HOME/.local/lib/amun/amun-termux" /workspace/dev/amun/amun-termux' || { rc=1; log_output "[FAIL] installed amun-termux differs"; }
+    tx 'dpkg -s openssh tmux neovim jq rsync >/dev/null' || { rc=1; log_output "[FAIL] termux_packages missing"; }
+
+    if [ "$mode" = "bootstrap" ]; then
+        tx '! pgrep -x sshd >/dev/null' || { rc=1; log_output "[FAIL] sshd running despite skip"; }
+        tx 'test ! -d "$HOME/.dotfiles"' || { rc=1; log_output "[FAIL] dotfiles present despite skip"; }
+    else
+        tx "grep -q '^Port 8022' $TERMUX_PREFIX/etc/ssh/sshd_config" || { rc=1; log_output "[FAIL] sshd port"; }
+        tx "grep -q '^PasswordAuthentication no' $TERMUX_PREFIX/etc/ssh/sshd_config" || { rc=1; log_output "[FAIL] sshd password auth"; }
+        tx "$TERMUX_PREFIX/bin/sshd -t" || { rc=1; log_output "[FAIL] sshd -t"; }
+        tx 'pgrep -x sshd >/dev/null' || { rc=1; log_output "[FAIL] sshd not running"; }
+        tx 'test -s "$HOME/.ssh/authorized_keys" && grep -q "^ssh-" "$HOME/.ssh/authorized_keys"' || { rc=1; log_output "[FAIL] authorized_keys"; }
+        tx '[ "$(stat -c %a "$HOME/.ssh")" = "700" ]' || { rc=1; log_output "[FAIL] ~/.ssh mode"; }
+        tx 'test -d "$HOME/.dotfiles/.git" && test -d "$HOME/.gear/.git"' || { rc=1; log_output "[FAIL] dotfiles/gear clones"; }
+        tx 'test -f "$HOME/.bashrc" && test -L "$HOME/bin/seshat" && test -d "$HOME/.vim/.git" && test -d "$HOME/.config/nvim/.git"' || { rc=1; log_output "[FAIL] seshat targets"; }
+        tx 'test ! -d "$HOME/.dotfiles/.seshat/venv"' || { rc=1; log_output "[FAIL] seshat venv not cleaned"; }
+        tx 'head -1 "$HOME/.claude/statusline.sh" | grep -q "env bash" && echo "{}" | "$HOME/.claude/statusline.sh" >/dev/null' || { rc=1; log_output "[FAIL] statusline"; }
+        tx 'export PATH="$HOME/bin:$PATH"; "$HOME/.gear/run" kauket version >/dev/null' || { rc=1; log_output "[FAIL] gear kauket"; }
+        tx 'export PATH="$HOME/bin:$PATH"; "$HOME/.gear/run" clouddevbox --help >/dev/null' || { rc=1; log_output "[FAIL] gear clouddevbox"; }
+
+        # Second run through the installed wrapper: proves wrapper->lib exec,
+        # the atomic self-overwrite of the running script, and idempotence.
+        log_output "[HOST] Termux second run (idempotence via ~/bin/amun)"
+        tx 'AMUN_REPO=/workspace/dev/amun "$HOME/bin/amun" 2>&1 | tee "$HOME/run2.log"' || rc=$?
+        tx 'grep -E "changed=0 .*failed=0" "$HOME/run2.log" >/dev/null' || { rc=1; log_output "[FAIL] second run not idempotent"; }
+        tx 'test ! -e "$HOME/.provisioning"' || { rc=1; log_output "[FAIL] ~/.provisioning not cleaned (run 2)"; }
+
+        for plugin in "${PLUGINS[@]}"; do
+            log_output "[HOST] Running termux plugin: ${plugin}"
+            tx "AMUN_REPO=/workspace/dev/amun-${plugin} \"\$HOME/bin/amun\" ${plugin}" || rc=$?
+        done
+    fi
+
+    if [ ${DEBUG:-0} -eq 1 ]; then
+        docker exec -it --user system \
+            -e TERMUX_VERSION=docker \
+            -e "LD_PRELOAD=$TERMUX_PREFIX/lib/libtermux-exec-ld-preload.so" \
+            "$TERMUX_CONTAINER" "$TERMUX_PREFIX/bin/bash" -l
+    fi
+
+    termux_teardown
+    return "$rc"
+}
+
 # Accumulate per-platform failures so the script's exit code reflects the
 # worst result instead of whatever the last cleanup command returned.
 FAILED=0
 function run_platform {
-    log_output "[HOST] === Running $1 ==="
-    "$1" || { FAILED=1; log_output "[HOST] === $1 FAILED ==="; }
+    log_output "[HOST] === Running $* ==="
+    "$@" || { FAILED=1; log_output "[HOST] === $* FAILED ==="; }
 }
 
 case "$PLATFORM" in
@@ -359,9 +462,17 @@ case "$PLATFORM" in
         run_platform test_arch
         ;;
     linux)
+        # Deliberately excludes termux: in amun's platform model `linux`
+        # means conventional FHS distributions; Termux is its own platform.
         run_platform test_debian
         run_platform test_ubuntu
         run_platform test_arch
+        ;;
+    termux-bootstrap)
+        run_platform test_termux bootstrap
+        ;;
+    termux|android)
+        run_platform test_termux full
         ;;
     "")
         run_platform test_sequoia
@@ -377,7 +488,9 @@ case "$PLATFORM" in
         echo "  ubuntu           - Test on Ubuntu 24.04"
         echo "  arch, linux/arch - Test on Arch Linux"
         echo "  linux            - Test on Debian + Ubuntu + Arch"
-        echo "  (no args)        - Test on all platforms"
+        echo "  termux-bootstrap - Test Termux bootstrap in Docker (no dotfiles/sshd)"
+        echo "  termux, android  - Test complete Termux provisioning in Docker"
+        echo "  (no args)        - Test on all stable platforms"
         echo ""
         echo "  -p, --plugins    - Run amun plugins after base provisioning"
         exit 1
