@@ -87,4 +87,4 @@ termux_packages:
 termux_ssh_port: "8022"
 amun_termux_start_sshd: true
 # amun-termux overrides this with -e amun_termux_prefix=$PREFIX.
-amun_termux_prefix: "{{ ansible_env.PREFIX | default('/data/data/com.termux/files/usr') }}"
+amun_termux_prefix: "{{ ansible_facts['env']['PREFIX'] | default('/data/data/com.termux/files/usr') }}"

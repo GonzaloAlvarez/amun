@@ -39,7 +39,7 @@ the same `main.yml` and roles — no root, no sudo, packages via `pkg`, sshd on
 port 8022 with key-only auth. On a new device:
 
 ```bash
-pkg install -y curl && bash <(curl -fsSL https://go.gn.al/amun-termux)
+bash <(curl -fsSL https://go.gn.al/amun-termux)
 ```
 
 Plugins follow the usual convention (`... | bash -s -- <plugin>`), and after
