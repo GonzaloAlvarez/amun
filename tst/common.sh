@@ -2,8 +2,15 @@
 
 TST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_ISO="$TST_DIR/arch-linux-aarch64.iso"
-ARCHBOOT_URL="https://release.archboot.com/aarch64/latest/iso/"
-REMOTE_ISO="$(curl -so - https://release.archboot.com/aarch64/latest/b2sum.txt | grep  "ARCH-aarch64.iso)" | awk -F'[/)]' '{print $2}')"
+# The ISO and the ssh login key (embedded in Release.txt) MUST come from the
+# same release: archboot rotates the key per build, and "latest" is sometimes
+# internally inconsistent mid-upload (seen 2026-08-22: Aug-23 ISO next to an
+# Aug-02 Release.txt — install ssh polling then spins forever). Pin a dated
+# dir with e.g. ARCHBOOT_RELEASE=2026.07 when latest is broken.
+ARCHBOOT_RELEASE="${ARCHBOOT_RELEASE:-latest}"
+ARCHBOOT_BASE="https://release.archboot.com/aarch64/$ARCHBOOT_RELEASE"
+ARCHBOOT_URL="$ARCHBOOT_BASE/iso/"
+REMOTE_ISO="$(curl -so - "$ARCHBOOT_BASE/iso/" | grep -oE 'href="[^"]*-ARCH-aarch64\.iso"' | head -n1 | awk -F'[/"]' '{print $(NF-1)}')"
 DISK_IMG="$TST_DIR/archlinuxarm.qcow2"
 DISK_SIZE="30G"
 RAM_SIZE="4G"
@@ -37,7 +44,7 @@ uefi_fw() {
 ssh_keys() {
     echo "--- Retrieving the SSH Key ---"
 
-    curl -so - https://release.archboot.com/aarch64/latest/Release.txt | sed -n '/-----BEGIN OPENSSH PRIVATE KEY-----/,/-----END OPENSSH PRIVATE KEY-----/p' > "$SSH_KEY"
+    curl -so - "$ARCHBOOT_BASE/Release.txt" | sed -n '/-----BEGIN OPENSSH PRIVATE KEY-----/,/-----END OPENSSH PRIVATE KEY-----/p' > "$SSH_KEY"
     chmod 600 "$SSH_KEY"
 }
 

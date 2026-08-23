@@ -25,9 +25,12 @@ PROVISIONING = pathlib.Path.home() / ".provisioning"
 def _cleanup():
     shutil.rmtree(PROVISIONING, ignore_errors=True)
     for shim in (pathlib.Path.home() / ".amun", pathlib.Path.home() / ".bt"):
+        # Only remove an actual shim file: ~/.amun may be an unrelated
+        # directory (the arch test stages the repo there, for one).
         try:
-            shim.unlink()
-        except FileNotFoundError:
+            if shim.is_file():
+                shim.unlink()
+        except OSError:
             pass
 
 in_venv = (hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix))
