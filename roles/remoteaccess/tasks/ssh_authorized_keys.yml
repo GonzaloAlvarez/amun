@@ -22,8 +22,14 @@
   register: ssh_pubkey_response
   changed_when: false
 
+# Explicit path: on Android getpwnam() reports pw_dir=/data, so the module
+# default would write the key outside the real home. ansible_env.HOME equals
+# pw_dir on macOS/Linux, so behavior there is unchanged. manage_dir is off
+# because ~/.ssh is created with the right mode two tasks earlier.
 - name: Add SSH public key to authorized_keys
   ansible.posix.authorized_key:
     user: "{{ current_user }}"
     key: "{{ ssh_pubkey_response.content | trim }}"
     state: present
+    path: "{{ ansible_facts['env']['HOME'] }}/.ssh/authorized_keys"
+    manage_dir: false

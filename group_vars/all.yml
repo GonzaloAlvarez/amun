@@ -61,3 +61,28 @@ arch_packages:
   - unzip
 
 neovim_min_version: "0.11.2"
+
+# Termux (Android). Not linux_packages: cron/rsyslog/sudo/locales/kbd have no
+# place in a Termux prefix. jq is required by the seshat-installed
+# ~/.claude/statusline.sh and amun is the only package provisioner here.
+termux_packages:
+  - curl
+  - git
+  - gnupg
+  - jq
+  - neovim
+  - openssh
+  - procps
+  - python
+  - python-cryptography
+  - python-ensurepip-wheels
+  - python-pip
+  - rsync
+  - tmux
+  - unzip
+  - vim
+
+termux_ssh_port: "8022"
+amun_termux_start_sshd: true
+# amun-termux overrides this with -e amun_termux_prefix=$PREFIX.
+amun_termux_prefix: "{{ ansible_env.PREFIX | default('/data/data/com.termux/files/usr') }}"

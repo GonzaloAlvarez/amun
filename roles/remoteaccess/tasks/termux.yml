@@ -1,0 +1,34 @@
+---
+# No service manager and no /etc on Termux: sshd lives in $PREFIX and is
+# managed directly by pid. amun always runs --connection=local, so
+# restarting sshd here never severs the provisioning session.
+- name: Configure SSH authorized keys
+  import_tasks: ssh_authorized_keys.yml
+
+- name: Generate Termux SSH host keys
+  ansible.builtin.command: ssh-keygen -A
+  args:
+    creates: "{{ amun_termux_prefix }}/etc/ssh/ssh_host_ed25519_key"
+
+- name: Configure Termux SSH port
+  ansible.builtin.lineinfile:
+    path: "{{ amun_termux_prefix }}/etc/ssh/sshd_config"
+    regexp: '^#?Port '
+    line: "Port {{ termux_ssh_port }}"
+    validate: "{{ amun_termux_prefix }}/bin/sshd -t -f %s"
+  notify: Restart sshd (Termux)
+
+- name: Disable password authentication via SSH (Termux)
+  ansible.builtin.lineinfile:
+    path: "{{ amun_termux_prefix }}/etc/ssh/sshd_config"
+    regexp: '^#?PasswordAuthentication'
+    line: "PasswordAuthentication no"
+    validate: "{{ amun_termux_prefix }}/bin/sshd -t -f %s"
+  notify: Restart sshd (Termux)
+
+- name: Ensure Termux sshd is running
+  ansible.builtin.shell: |
+    pgrep -x sshd >/dev/null || { {{ amun_termux_prefix }}/bin/sshd; echo STARTED; }
+  register: termux_sshd_start
+  changed_when: "'STARTED' in termux_sshd_start.stdout"
+  when: amun_termux_start_sshd | bool

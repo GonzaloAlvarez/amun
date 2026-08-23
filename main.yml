@@ -1,11 +1,18 @@
 ---
 - hosts: all
+  pre_tasks:
+    # amun-termux passes -e amun_platform=termux; TERMUX_VERSION is the
+    # fallback signal (the repo-wide Termux convention — never PREFIX checks).
+    - name: Detect Termux platform
+      ansible.builtin.set_fact:
+        amun_is_termux: "{{ (amun_platform | default('')) == 'termux'
+                            or (ansible_env.TERMUX_VERSION | default('')) != '' }}"
   roles:
-    - { role: permissions, become: false }
+    - { role: permissions, become: false, when: "not amun_is_termux" }
     - { role: homebrew, become: false, when: "ansible_facts['system'] == 'Darwin'" }
     - { role: utils, become: false }
-    - { role: pki, become: false }
-    - { role: dotfiles, become: false }
-    - { role: config, become: false }
-    - { role: ufw, become: false, when: "ansible_facts['system'] != 'Darwin'" }
+    - { role: pki, become: false, when: "not amun_is_termux" }
+    - { role: dotfiles, become: false, when: "not (amun_skip_dotfiles | default(false))" }
+    - { role: config, become: false, when: "not amun_is_termux" }
+    - { role: ufw, become: false, when: "ansible_facts['system'] != 'Darwin' and not amun_is_termux" }
     - { role: remoteaccess, become: false }

@@ -1,2 +1,9 @@
 ---
 roles: []
+
+# Both collections are required even on Termux (which installs bare
+# ansible-core): Ansible resolves module references in every compiled role at
+# parse time, including roles skipped by when:.
+collections:
+  - name: ansible.posix
+  - name: community.general

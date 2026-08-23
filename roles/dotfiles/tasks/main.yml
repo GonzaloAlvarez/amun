@@ -12,11 +12,35 @@
     repo: 'https://github.com/GonzaloAlvarez/gear.git'
     dest: '{{ ansible_facts["env"].HOME }}/.gear'
 
+# Fresh machines ship stock copies of files Seshat manages (/etc/skel, and
+# Debian's /usr/share/base-files for root); Seshat correctly blocks on them
+# (exit 2). Remove them ONLY when byte-identical to the pristine source — a
+# file the user has touched still blocks, which is Seshat's safety intact.
+- name: Remove untouched stock dotfiles that Seshat manages
+  ansible.builtin.shell: |
+    changed=0
+    for f in .bashrc .bash_profile; do
+      [ -f "$HOME/$f" ] || continue
+      for src in "/etc/skel/$f" "/usr/share/base-files/dot$f"; do
+        if [ -f "$src" ] && cmp -s "$HOME/$f" "$src"; then
+          rm -f "$HOME/$f"
+          changed=1
+          break
+        fi
+      done
+    done
+    echo "stock_cleanup_changed=$changed"
+  register: stock_dotfiles_cleanup
+  changed_when: "'stock_cleanup_changed=1' in stock_dotfiles_cleanup.stdout"
+
+# Seshat exit codes: 0 clean, 1 error, 2 blocked/unsafe — all nonzero must
+# fail the play (dotfiles CLAUDE.md). No failed_when: false here.
 - name: Install dotfiles
   ansible.builtin.shell:
     cmd: "./setup"
     chdir: "{{ ansible_facts['env'].HOME }}/.dotfiles/"
-  failed_when: false
+  environment:
+    AMUN_PLATFORM: "{{ 'termux' if (amun_is_termux | default(false)) else 'standard' }}"
   changed_when: false
 
 - name: Execute osx specific tasks

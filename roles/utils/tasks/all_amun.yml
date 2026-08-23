@@ -10,3 +10,34 @@
     url: https://raw.githubusercontent.com/gonzaloalvarez/amun/main/amun
     dest: "{{ ansible_facts['env']['HOME'] }}/bin/amun"
     mode: "0755"
+  when: not (amun_is_termux | default(false))
+
+- name: Install Termux amun command
+  when: amun_is_termux | default(false)
+  block:
+    - name: Ensure amun lib directory exists
+      ansible.builtin.file:
+        path: "{{ ansible_facts['env']['HOME'] }}/.local/lib/amun"
+        state: directory
+        mode: "0755"
+
+    # copy stages a temp file and renames it (atomic_move): a new inode
+    # replaces the currently-executing amun-termux, whose bash keeps reading
+    # its old inode safely. Never change this to a shell cp (same-inode
+    # write would corrupt the running script).
+    - name: Install amun-termux bootstrap
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/amun-termux"
+        dest: "{{ ansible_facts['env']['HOME'] }}/.local/lib/amun/amun-termux"
+        mode: "0755"
+
+    # The wrapper embeds the Termux bash path because a shebang cannot
+    # interpolate $PREFIX and /usr/bin/env only works with termux-exec's
+    # LD_PRELOAD active (absent over plain ssh sessions).
+    - name: Install amun wrapper
+      ansible.builtin.copy:
+        dest: "{{ ansible_facts['env']['HOME'] }}/bin/amun"
+        mode: "0755"
+        content: |
+          #!{{ amun_termux_prefix }}/bin/bash
+          exec "$HOME/.local/lib/amun/amun-termux" "$@"

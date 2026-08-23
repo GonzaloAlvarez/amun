@@ -1,0 +1,18 @@
+---
+# Builtin modules only: Termux has no python-apt, so the apt module is
+# unusable; pkg wraps apt with Termux mirror handling.
+- name: Refresh Termux package metadata
+  ansible.builtin.command: pkg update -y
+  changed_when: false
+
+- name: Read installed Termux packages
+  ansible.builtin.command: dpkg-query -W -f='${Package}\n'
+  register: termux_installed_packages
+  changed_when: false
+
+- name: Install missing Termux packages
+  ansible.builtin.command: "pkg install -y {{ termux_missing_packages | join(' ') }}"
+  vars:
+    termux_missing_packages: >-
+      {{ termux_packages | difference(termux_installed_packages.stdout_lines) }}
+  when: termux_missing_packages | length > 0

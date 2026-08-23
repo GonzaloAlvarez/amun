@@ -1,17 +1,6 @@
 ---
-- name: Create DynamicProfiles directory if it doesn't exist
-  ansible.builtin.file:
-    path: "{{ ansible_facts['env'].HOME }}/Library/Application Support/iTerm2/DynamicProfiles"
-    state: directory
-    mode: '0755'
-
-- name: Copy profile JSON to DynamicProfiles directory
-  ansible.builtin.copy:
-    src: "{{ ansible_facts['env'].HOME }}/.dotfiles/iterm/Profiles.json"
-    dest: "{{ ansible_facts['env'].HOME }}/Library/Application Support/iTerm2/DynamicProfiles/BlackBeast.json"
-    remote_src: yes
-
-
+# The dynamic profile itself is Seshat-owned now (dotfiles bundles/default.yml);
+# only the default-profile GUID remains amun's job.
 - name: Set the new profile as default
   community.general.osx_defaults:
     domain: com.googlecode.iterm2.plist

@@ -4,3 +4,9 @@
     name: "{{ sshd_service_name }}"
     state: restarted
   become: true
+
+- name: Restart sshd (Termux)
+  ansible.builtin.shell: |
+    pkill -x sshd || true
+    {{ amun_termux_prefix }}/bin/sshd
+  when: amun_termux_start_sshd | default(true) | bool
