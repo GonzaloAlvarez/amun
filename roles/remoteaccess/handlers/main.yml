@@ -5,8 +5,10 @@
     state: restarted
   become: true
 
+# -f '(^|/)sshd$' kills only the listener (full-path process names on real
+# Android; OpenSSH 10 sshd-session processes — live connections — survive).
 - name: Restart sshd (Termux)
   ansible.builtin.shell: |
-    pkill -x sshd || true
+    pkill -f '(^|/)sshd$' || true
     {{ amun_termux_prefix }}/bin/sshd
   when: amun_termux_start_sshd | default(true) | bool

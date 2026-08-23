@@ -26,9 +26,12 @@
     validate: "{{ amun_termux_prefix }}/bin/sshd -t -f %s"
   notify: Restart sshd (Termux)
 
+# On real Android /proc reports the full binary path as the process name, so
+# pgrep -x sshd never matches; match the listener's cmdline instead (the
+# $-anchor excludes OpenSSH 10's per-connection sshd-session processes).
 - name: Ensure Termux sshd is running
   ansible.builtin.shell: |
-    pgrep -x sshd >/dev/null || { {{ amun_termux_prefix }}/bin/sshd; echo STARTED; }
+    pgrep -f '(^|/)sshd$' >/dev/null || { {{ amun_termux_prefix }}/bin/sshd; echo STARTED; }
   register: termux_sshd_start
   changed_when: "'STARTED' in termux_sshd_start.stdout"
   when: amun_termux_start_sshd | bool

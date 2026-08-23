@@ -400,13 +400,13 @@ function test_termux {
     tx 'dpkg -s openssh tmux neovim jq rsync >/dev/null' || { rc=1; log_output "[FAIL] termux_packages missing"; }
 
     if [ "$mode" = "bootstrap" ]; then
-        tx '! pgrep -x sshd >/dev/null' || { rc=1; log_output "[FAIL] sshd running despite skip"; }
+        tx '! pgrep -f "(^|/)sshd$" >/dev/null' || { rc=1; log_output "[FAIL] sshd running despite skip"; }
         tx 'test ! -d "$HOME/.dotfiles"' || { rc=1; log_output "[FAIL] dotfiles present despite skip"; }
     else
         tx "grep -q '^Port 8022' $TERMUX_PREFIX/etc/ssh/sshd_config" || { rc=1; log_output "[FAIL] sshd port"; }
         tx "grep -q '^PasswordAuthentication no' $TERMUX_PREFIX/etc/ssh/sshd_config" || { rc=1; log_output "[FAIL] sshd password auth"; }
         tx "$TERMUX_PREFIX/bin/sshd -t" || { rc=1; log_output "[FAIL] sshd -t"; }
-        tx 'pgrep -x sshd >/dev/null' || { rc=1; log_output "[FAIL] sshd not running"; }
+        tx 'pgrep -f "(^|/)sshd$" >/dev/null' || { rc=1; log_output "[FAIL] sshd not running"; }
         tx 'test -s "$HOME/.ssh/authorized_keys" && grep -q "^ssh-" "$HOME/.ssh/authorized_keys"' || { rc=1; log_output "[FAIL] authorized_keys"; }
         tx '[ "$(stat -c %a "$HOME/.ssh")" = "700" ]' || { rc=1; log_output "[FAIL] ~/.ssh mode"; }
         tx 'test -d "$HOME/.dotfiles/.git" && test -d "$HOME/.gear/.git"' || { rc=1; log_output "[FAIL] dotfiles/gear clones"; }
