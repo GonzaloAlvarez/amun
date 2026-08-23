@@ -79,7 +79,7 @@ Running Tests
 Once dependencies are in place, run the integrated test suite:
 
 ```bash
-./tests
+./test
 ```
 This will execute end-to-end provisioning and validation flows to ensure amun works correctly.
 
@@ -99,7 +99,7 @@ The `./molecule` script will automatically install molecule and its dependencies
 ./molecule permissions verify # Run specific test step
 ```
 
-Molecule tests are available for: permissions, dotfiles, utils
+Molecule tests are available for: permissions, dotfiles, utils, remoteaccess, ufw, pki
 
 ### Debugging
 
@@ -107,7 +107,7 @@ To step into the environment during testing and inspect the system interactively
 set the DEBUG flag before running tests:
 
 ```bash
-DEBUG=1 ./tests
+DEBUG=1 ./test
 ```
 
 When DEBUG=1 is active, the process will pause and drop you into a command prompt inside the provisioned environment.

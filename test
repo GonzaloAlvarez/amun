@@ -33,9 +33,11 @@ function log_output {
 	fi
 }
 
+# Only invoked from SIGINT/SIGTERM traps — exit nonzero so an interrupted
+# run never reads as a pass.
 function cleanup {
 	log_output "[HOST] Stopping runner script"
-	exit 0
+	exit 130
 }
 
 function shutdown {
@@ -206,6 +208,8 @@ function qemu_breakpoint {
 }
 
 function test_sequoia {
+    local rc=0
+
     boot_vm "ghcr.io/cirruslabs/macos-sequoia-vanilla:latest" amunsonoma
 
     setup_vm_key
@@ -226,19 +230,23 @@ function test_sequoia {
 
     ssh_command cp "'/Volumes/My Shared Files/dev/amun/amun'" "~/amun"
     ssh_command chmod +x "~/amun"
-    ssh_command "AMUN_REPO='/Volumes/My Shared Files/dev/amun' ./amun"
+    ssh_command "AMUN_REPO='/Volumes/My Shared Files/dev/amun' ./amun" || rc=$?
 
     for plugin in "${PLUGINS[@]}"; do
         log_output "[HOST] Running plugin: ${plugin}"
-        ssh_command_key "AMUN_REPO='/Volumes/My Shared Files/dev/amun-${plugin}' ./amun ${plugin}"
+        ssh_command_key "AMUN_REPO='/Volumes/My Shared Files/dev/amun-${plugin}' ./amun ${plugin}" || rc=$?
     done
 
     breakpoint
 
     shutdown
+
+    return "$rc"
 }
 
 function test_debian {
+    local rc=0
+
     boot_vm "ghcr.io/cirruslabs/debian:bookworm" amunbookworm
 
     disable_sve
@@ -250,19 +258,23 @@ function test_debian {
     ssh_command sudo systemctl stop unattended-upgrades
     ssh_command cp "/mnt/shared/dev/amun/amun" "~/amun"
     ssh_command chmod +x "~/amun"
-    ssh_command "AMUN_REPO='/mnt/shared/dev/amun' ./amun"
+    ssh_command "AMUN_REPO='/mnt/shared/dev/amun' ./amun" || rc=$?
 
     for plugin in "${PLUGINS[@]}"; do
         log_output "[HOST] Running plugin: ${plugin}"
-        ssh_command_key "AMUN_REPO='/mnt/shared/dev/amun-${plugin}' ./amun ${plugin}"
+        ssh_command_key "AMUN_REPO='/mnt/shared/dev/amun-${plugin}' ./amun ${plugin}" || rc=$?
     done
 
     breakpoint
 
     shutdown
+
+    return "$rc"
 }
 
 function test_ubuntu {
+    local rc=0
+
     boot_vm "ghcr.io/cirruslabs/ubuntu:24.04" amunnoble
 
     disable_sve
@@ -273,19 +285,23 @@ function test_ubuntu {
     ssh_command sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
     ssh_command cp "/mnt/shared/dev/amun/amun" "~/amun"
     ssh_command chmod +x "~/amun"
-    ssh_command "AMUN_REPO='/mnt/shared/dev/amun' ./amun"
+    ssh_command "AMUN_REPO='/mnt/shared/dev/amun' ./amun" || rc=$?
 
     for plugin in "${PLUGINS[@]}"; do
         log_output "[HOST] Running plugin: ${plugin}"
-        ssh_command_key "AMUN_REPO='/mnt/shared/dev/amun-${plugin}' ./amun ${plugin}"
+        ssh_command_key "AMUN_REPO='/mnt/shared/dev/amun-${plugin}' ./amun ${plugin}" || rc=$?
     done
 
     breakpoint
 
     shutdown
+
+    return "$rc"
 }
 
 function test_arch {
+    local rc=0
+
     trap 'log_output "[HOST] Interrupted, cleaning up"; qemu_cleanup; cleanup' SIGINT SIGTERM
 
     qemu_boot_vm
@@ -301,14 +317,14 @@ function test_arch {
     log_output "[HOST] Extracting repository and running amun"
     qemu_ssh_command "cd /home/archboot/.amun && tar --warning=no-unknown-keyword -xzf amun.tar.gz && rm -f amun.tar.gz"
     qemu_ssh_command "cp /home/archboot/.amun/amun/amun ~/amun && chmod +x ~/amun"
-    qemu_ssh_command "AMUN_REPO='/home/archboot/.amun/amun' ./amun"
+    qemu_ssh_command "AMUN_REPO='/home/archboot/.amun/amun' ./amun" || rc=$?
 
     for plugin in "${PLUGINS[@]}"; do
         log_output "[HOST] Running plugin: ${plugin}"
         tar --no-xattrs -czf "/tmp/amun-${plugin}.tar.gz" -C "$(dirname "$SCRIPT_DIR")" "amun-${plugin}"
         qemu_scp "/tmp/amun-${plugin}.tar.gz" "/home/archboot/.amun/amun-${plugin}.tar.gz"
         qemu_ssh_command "cd /home/archboot/.amun && tar --warning=no-unknown-keyword -xzf amun-${plugin}.tar.gz && rm -f amun-${plugin}.tar.gz"
-        qemu_ssh_command "AMUN_REPO='/home/archboot/.amun/amun-${plugin}' ./amun ${plugin}"
+        qemu_ssh_command "AMUN_REPO='/home/archboot/.amun/amun-${plugin}' ./amun ${plugin}" || rc=$?
     done
 
     qemu_breakpoint
@@ -317,31 +333,41 @@ function test_arch {
     qemu_cleanup
     rm -f /tmp/amun.tar.gz
     rm -f /tmp/amun-*.tar.gz
+
+    return "$rc"
+}
+
+# Accumulate per-platform failures so the script's exit code reflects the
+# worst result instead of whatever the last cleanup command returned.
+FAILED=0
+function run_platform {
+    log_output "[HOST] === Running $1 ==="
+    "$1" || { FAILED=1; log_output "[HOST] === $1 FAILED ==="; }
 }
 
 case "$PLATFORM" in
     mac|sequoia)
-        test_sequoia
+        run_platform test_sequoia
         ;;
     debian)
-        test_debian
+        run_platform test_debian
         ;;
     ubuntu)
-        test_ubuntu
+        run_platform test_ubuntu
         ;;
     arch|linux/arch)
-        test_arch
+        run_platform test_arch
         ;;
     linux)
-        test_debian
-        test_ubuntu
-        test_arch
+        run_platform test_debian
+        run_platform test_ubuntu
+        run_platform test_arch
         ;;
     "")
-        test_sequoia
-        test_debian
-        test_ubuntu
-        test_arch
+        run_platform test_sequoia
+        run_platform test_debian
+        run_platform test_ubuntu
+        run_platform test_arch
         ;;
     *)
         echo "Usage: $0 [platform] [-p|--plugins <plugin> ...]"
@@ -357,3 +383,5 @@ case "$PLATFORM" in
         exit 1
         ;;
 esac
+
+exit "$FAILED"
