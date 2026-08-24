@@ -33,6 +33,19 @@
   register: stock_dotfiles_cleanup
   changed_when: "'stock_cleanup_changed=1' in stock_dotfiles_cleanup.stdout"
 
+- name: Remove untouched stock termux.properties that Seshat manages
+  ansible.builtin.shell: |
+    f="$HOME/.termux/termux.properties"
+    removed=0
+    if [ -f "$f" ] && ! grep -q '^[[:space:]]*[^#[:space:]]' "$f"; then
+      rm -f "$f"
+      removed=1
+    fi
+    echo "termux_properties_removed=$removed"
+  register: stock_termux_properties_cleanup
+  changed_when: "'termux_properties_removed=1' in stock_termux_properties_cleanup.stdout"
+  when: amun_is_termux | default(false)
+
 # Seshat exit codes: 0 clean, 1 error, 2 blocked/unsafe — all nonzero must
 # fail the play (dotfiles CLAUDE.md). No failed_when: false here.
 - name: Install dotfiles
