@@ -7,6 +7,9 @@ TST_DIR="$(dirname "$0")/tst"
 VM_SSH_KEY="/tmp/amun-test-vmkey-$$"
 PLUGINS=()
 PLATFORM=""
+CLOUD=0
+KVM=0
+CLOUD_PROFILE=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -17,6 +20,22 @@ while [[ $# -gt 0 ]]; do
 				PLUGINS+=("$1")
 				shift
 			done
+			;;
+		--cloud)
+			CLOUD=1
+			shift
+			;;
+		--kvm)
+			KVM=1
+			shift
+			;;
+		--profile)
+			if [ $# -lt 2 ]; then
+				echo "Error: --profile requires a value" >&2
+				exit 1
+			fi
+			CLOUD_PROFILE="$2"
+			shift 2
 			;;
 		*)
 			if [ -z "$PLATFORM" ]; then
@@ -440,6 +459,134 @@ function test_termux {
     return "$rc"
 }
 
+# --- Cloud (clouddevbox; billable EC2 Debian 13 amd64 devbox) ---------------
+# Unlike the tart/QEMU paths, amun CORE is NOT re-run by this harness: the
+# box's user-data bootstraps core from GitHub main at boot (--plugins ""),
+# and the harness layers the LOCAL working-tree plugins on top of that base.
+# Rationale: re-converging core costs ~5 min and the cloud path exists to
+# test plugins that need real /dev/kvm (macOS hvf cannot nest).
+CLOUD_BOX=""
+CLOUD_PROFILE_RESOLVED=""
+
+function cloud_teardown {
+	if [ -n "$CLOUD_BOX" ]; then
+		log_output "[HOST] Destroying cloud box $CLOUD_BOX"
+		clouddevbox destroy "$CLOUD_BOX" --yes --profile "$CLOUD_PROFILE_RESOLVED" || \
+			log_output "[HOST] WARNING: destroy failed - clean up manually: clouddevbox destroy $CLOUD_BOX --yes --profile $CLOUD_PROFILE_RESOLVED"
+	fi
+	rm -f /tmp/amun-cloud-$$*.tar.gz
+}
+
+function cloud_ssh {
+	clouddevbox ssh "$CLOUD_BOX" --profile "$CLOUD_PROFILE_RESOLVED" -- "$@"
+}
+
+function test_cloud {
+	local rc=0
+
+	if ! command -v clouddevbox >/dev/null 2>&1; then
+		log_output "[HOST] clouddevbox not found on PATH; install via gear: ~/.gear/com/clouddevbox/setup-darwin (repo: cn-cli-devbox)"
+		return 1
+	fi
+
+	CLOUD_PROFILE_RESOLVED="${CLOUD_PROFILE:-${CLOUDDEVBOX_PROFILE:-${AWS_PROFILE:-}}}"
+	if [ -z "$CLOUD_PROFILE_RESOLVED" ]; then
+		log_output "[HOST] No AWS profile: pass --profile <p> or set CLOUDDEVBOX_PROFILE / AWS_PROFILE"
+		log_output "[HOST] (clouddevbox would otherwise prompt interactively on every one of its ~8 calls)"
+		return 1
+	fi
+
+	CLOUD_BOX="amunt$$"
+	if [ "$KVM" = 1 ]; then
+		log_output "[HOST] COST: billable EC2 devbox (m7i.large ~\$0.10/h, typical run 15-25 min), destroyed automatically on exit"
+	else
+		log_output "[HOST] COST: billable EC2 devbox (m7g.large ~\$0.082/h, typical run 15-25 min), destroyed automatically on exit"
+	fi
+	log_output "[HOST] Cloud run: box=$CLOUD_BOX profile=$CLOUD_PROFILE_RESOLVED kvm=$KVM"
+
+	# EXIT trap (not an inline shutdown) so a leaked box can never outlive a
+	# failure path - it costs money. Safe globally: the --cloud dispatch is
+	# exclusive, so no tart/QEMU platform runs in the same invocation. The
+	# SIGINT/SIGTERM handler exits 130, which fires the EXIT trap - same
+	# "an interrupt is never a pass" contract as cleanup().
+	trap 'cloud_teardown' EXIT
+	trap 'log_output "[HOST] Interrupted, tearing down cloud box"; exit 130' SIGINT SIGTERM
+
+	local new_args=(new "$CLOUD_BOX" --profile "$CLOUD_PROFILE_RESOLVED" --plugins "")
+	[ "$KVM" = 1 ] && new_args+=(--kvm)
+	log_output "[HOST] clouddevbox ${new_args[*]} (takes several minutes)"
+	clouddevbox "${new_args[@]}" || return 1
+
+	# SSHing during bootstrap races apt/dpkg locks - wait for user-data
+	# (amun core from GitHub main) to finish before touching the box.
+	log_output "[HOST] Waiting for full provisioning (15 min deadline, 30s poll)"
+	local st
+	local deadline=$(( $(date +%s) + 900 ))
+	while :; do
+		st="$(clouddevbox status "$CLOUD_BOX" --profile "$CLOUD_PROFILE_RESOLVED" 2>/dev/null || true)"
+		echo "$st" | grep -q "fully provisioned" && break
+		if echo "$st" | grep -q "FAILED"; then
+			log_output "[HOST] Bootstrap FAILED on the box:"
+			echo "$st"
+			return 1
+		fi
+		if [ "$(date +%s)" -ge "$deadline" ]; then
+			log_output "[HOST] Not fully provisioned after 15 min:"
+			echo "$st"
+			return 1
+		fi
+		sleep 30
+	done
+	log_output "[HOST] Box fully provisioned"
+
+	local SCRIPT_DIR
+	SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+	local PARENT_DIR
+	PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+
+	# Same transport as test_arch, with extra excludes: 'tst' can hold
+	# GB-scale qcow2/iso artifacts and '.git' is never read on the
+	# AMUN_REPO path (the bootstrap copytree ignores .venv/tst and only
+	# clones when AMUN_REPO is unset) - dead weight over a relayed scp.
+	log_output "[HOST] Creating tarball of amun repository"
+	tar --no-xattrs --exclude='.venv' --exclude='tst' --exclude='.git' \
+		-czf "/tmp/amun-cloud-$$.tar.gz" -C "$PARENT_DIR" "$(basename "$SCRIPT_DIR")"
+
+	log_output "[HOST] Transferring amun to $CLOUD_BOX"
+	clouddevbox copy "/tmp/amun-cloud-$$.tar.gz" "$CLOUD_BOX:/tmp/amun.tar.gz" --profile "$CLOUD_PROFILE_RESOLVED" || return 1
+	cloud_ssh 'mkdir -p ~/.amun && cd ~/.amun && rm -rf amun && tar --warning=no-unknown-keyword -xzf /tmp/amun.tar.gz && rm -f /tmp/amun.tar.gz' || return 1
+	cloud_ssh 'cp ~/.amun/amun/amun ~/amun && chmod +x ~/amun' || return 1
+
+	for plugin in "${PLUGINS[@]}"; do
+		log_output "[HOST] Running plugin: ${plugin}"
+		tar --no-xattrs --exclude='.venv' --exclude='.git' \
+			-czf "/tmp/amun-cloud-$$-${plugin}.tar.gz" -C "$PARENT_DIR" "amun-${plugin}"
+		clouddevbox copy "/tmp/amun-cloud-$$-${plugin}.tar.gz" "$CLOUD_BOX:/tmp/amun-${plugin}.tar.gz" --profile "$CLOUD_PROFILE_RESOLVED" || { rc=1; continue; }
+		cloud_ssh "cd ~/.amun && rm -rf amun-${plugin} && tar --warning=no-unknown-keyword -xzf /tmp/amun-${plugin}.tar.gz && rm -f /tmp/amun-${plugin}.tar.gz" || { rc=1; continue; }
+		# \$HOME escaped locally so it expands on the box.
+		cloud_ssh "AMUN_REPO=\$HOME/.amun/amun-${plugin} ./amun ${plugin}" || rc=$?
+	done
+
+	if [ "$KVM" = 1 ]; then
+		# Harness-level proof the box really has nested virt after converge.
+		log_output "[HOST] Asserting /dev/kvm exists on the --kvm box"
+		if cloud_ssh 'test -c /dev/kvm'; then
+			log_output "[HOST] /dev/kvm present"
+		else
+			rc=1
+			log_output "[HOST] FAIL: /dev/kvm missing on --kvm box"
+		fi
+	fi
+
+	if [ ${DEBUG:-0} -eq 1 ]; then
+		log_output "[HOST] DEBUG=1 - interactive shell on $CLOUD_BOX (exit to tear down)"
+		clouddevbox ssh "$CLOUD_BOX" --profile "$CLOUD_PROFILE_RESOLVED"
+	fi
+
+	return "$rc"
+	# teardown happens in the EXIT trap
+}
+
 # Accumulate per-platform failures so the script's exit code reflects the
 # worst result instead of whatever the last cleanup command returned.
 FAILED=0
@@ -447,6 +594,20 @@ function run_platform {
     log_output "[HOST] === Running $* ==="
     "$@" || { FAILED=1; log_output "[HOST] === $* FAILED ==="; }
 }
+
+if [ "$KVM" = 1 ] && [ "$CLOUD" != 1 ]; then
+    echo "Error: --kvm requires --cloud (local tart/QEMU VMs cannot nest under macOS hvf)" >&2
+    exit 1
+fi
+
+if [ "$CLOUD" = 1 ]; then
+    if [ -n "$PLATFORM" ] && [ "$PLATFORM" != "debian" ]; then
+        echo "Error: --cloud only supports 'debian' (cloud devboxes are Debian 13 amd64)" >&2
+        exit 1
+    fi
+    run_platform test_cloud
+    exit "$FAILED"
+fi
 
 case "$PLATFORM" in
     mac|sequoia)
@@ -493,6 +654,10 @@ case "$PLATFORM" in
         echo "  (no args)        - Test on all stable platforms"
         echo ""
         echo "  -p, --plugins    - Run amun plugins after base provisioning"
+        echo "  --cloud          - Run 'debian' on a billable AWS devbox via clouddevbox"
+        echo "                     (Debian 13 amd64; box auto-destroyed; core NOT re-run)"
+        echo "  --kvm            - With --cloud: nested-virtualization box (m7i.large, /dev/kvm)"
+        echo "  --profile <p>    - AWS profile for --cloud (falls back to CLOUDDEVBOX_PROFILE, then AWS_PROFILE)"
         exit 1
         ;;
 esac

@@ -121,6 +121,30 @@ Once dependencies are in place, run the integrated test suite:
 ```
 This will execute end-to-end provisioning and validation flows to ensure amun works correctly.
 
+### Cloud testing (`--cloud`, `--kvm`)
+
+Local tart/QEMU VMs run under macOS hvf, which cannot nest virtualization —
+plugins that need a real `/dev/kvm` (e.g. `amun-qemu`) can't be validated
+locally. The cloud path provisions a **billable** AWS devbox via the
+[`clouddevbox`](https://github.com/GonzaloAlvarez/cn-cli-devbox) CLI instead:
+
+```bash
+./test debian --cloud --profile <aws-profile> -p <plugin>        # Debian 13 amd64 box
+./test debian --cloud --kvm --profile <aws-profile> -p <plugin>  # + nested virt (m7i.large, /dev/kvm)
+DEBUG=1 ./test debian --cloud --kvm --profile <p> -p <plugin>    # shell on the box before teardown
+```
+
+- Cost: m7i.large ≈ $0.10/h (m7g.large ≈ $0.082/h without `--kvm`); a typical
+  run is 15–25 min. The box is **destroyed automatically on exit** (EXIT trap,
+  also on failure/interrupt).
+- The profile falls back to `CLOUDDEVBOX_PROFILE`, then `AWS_PROFILE`.
+- Prerequisites: `clouddevbox` on PATH (gear `com/clouddevbox`) and its tailnet
+  route (cn-socksnode proxy on `127.0.0.1:1055`).
+- Unlike the tart/QEMU paths, **amun core is NOT re-run**: the box's user-data
+  bootstraps core from GitHub `main` at boot, and the harness ships only the
+  local working-tree plugin(s) on top. With `--kvm` the harness additionally
+  asserts `/dev/kvm` exists after the plugins converge.
+
 ### Molecule Testing
 
 For faster iteration on individual roles, you can use molecule to test roles in Docker containers:
