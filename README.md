@@ -99,51 +99,57 @@ Developers can easily build, test, and validate **amun** locally.
 
 ### Prerequisites
 
-Before running tests, ensure you have the following tools installed:
+VM lifecycle is delegated to [`kora`](https://github.com/GonzaloAlvarez/kora)
+(gear: `~/.gear/com/kora/setup-darwin`), which in turn needs:
 
-- [`tart`](https://github.com/cirruslabs/tart) — lightweight macOS virtualization tool  
-- [`sshpass`](https://linux.die.net/man/1/sshpass) — non-interactive SSH password provider  
-
-On macOS:
+- [`tart`](https://github.com/cirruslabs/tart) + [`sshpass`](https://linux.die.net/man/1/sshpass)
+  for sequoia/debian/ubuntu guests on Apple Silicon
+- `qemu` (Homebrew) for the arch guest
 
 ```bash
-brew install cirruslabs/cli/tart cirruslabs/cli/sshpass
+brew install cirruslabs/cli/tart cirruslabs/cli/sshpass qemu
 ```
+
+An uninstalled kora working tree also works: `KORA_BIN=~/dev/kora/kora ./test …`
 
 ### Running tests
 
-Running Tests
-
-Once dependencies are in place, run the integrated test suite:
-
 ```bash
-./test
+./test              # all platforms: sequoia, debian, ubuntu, arch
+./test debian       # one platform
+./test debian -p docker   # converge core, then the amun-docker plugin
 ```
-This will execute end-to-end provisioning and validation flows to ensure amun works correctly.
 
-### Cloud testing (`--cloud`, `--kvm`)
+Each platform run creates a fresh VM in an isolated `KORA_HOME` (unique VM
+names, no interference with a dev VM you may have), stages the working trees
+into the guest with `kora copy`, runs `AMUN_REPO=… ./amun`, and removes the
+VM. The staged tree is always what's tested — never a live host mount.
+
+### Cloud testing (`--cloud`)
 
 Local tart/QEMU VMs run under macOS hvf, which cannot nest virtualization —
 plugins that need a real `/dev/kvm` (e.g. `amun-qemu`) can't be validated
-locally. The cloud path provisions a **billable** AWS devbox via the
-[`clouddevbox`](https://github.com/GonzaloAlvarez/cn-cli-devbox) CLI instead:
+locally. `--cloud` runs the same payload in a fresh QEMU/KVM guest on the
+**persistent** `kvm` devbox (created on first use via
+[`clouddevbox`](https://github.com/GonzaloAlvarez/cn-cli-devbox)):
 
 ```bash
-./test debian --cloud --profile <aws-profile> -p <plugin>        # Debian 13 amd64 box
-./test debian --cloud --kvm --profile <aws-profile> -p <plugin>  # + nested virt (m7i.large, /dev/kvm)
-DEBUG=1 ./test debian --cloud --kvm --profile <p> -p <plugin>    # shell on the box before teardown
+./test --cloud --profile <aws-profile> -p <plugin>          # debian guest (default)
+./test arch --cloud --profile <aws-profile> -p <plugin>     # ubuntu/arch guests too
+DEBUG=1 ./test --cloud --profile <p> -p <plugin>            # shell in the guest before teardown
 ```
 
-- Cost: m7i.large ≈ $0.10/h (m7g.large ≈ $0.082/h without `--kvm`); a typical
-  run is 15–25 min. The box is **destroyed automatically on exit** (EXIT trap,
-  also on failure/interrupt).
-- The profile falls back to `CLOUDDEVBOX_PROFILE`, then `AWS_PROFILE`.
-- Prerequisites: `clouddevbox` on PATH (gear `com/clouddevbox`) and its tailnet
-  route (cn-socksnode proxy on `127.0.0.1:1055`).
-- Unlike the tart/QEMU paths, **amun core is NOT re-run**: the box's user-data
-  bootstraps core from GitHub `main` at boot, and the harness ships only the
-  local working-tree plugin(s) on top. With `--kvm` the harness additionally
-  asserts `/dev/kvm` exists after the plugins converge.
+- Cost: the `kvm` box is m7i.large ≈ $0.10/h while running (~$4/mo stopped),
+  with autostop re-asserted to 12h per boot. The harness **prompts before a
+  billable run** (`--yes` skips). The guest VM is removed after the run; the
+  box persists — no per-run CDK deploy, so subsequent runs start in ~1 min.
+- Without `--profile`, kora delegates selection to `clouddevbox profile`
+  (interactive bullet picker on a tty).
+- Prerequisites: `clouddevbox` on PATH (gear `com/clouddevbox`) and its
+  tailnet route (cn-socksnode proxy on `127.0.0.1:1055`).
+- Unlike the pre-kora harness, **amun core IS re-run** — the guest is a fresh
+  VM, not the devbox itself. Destroy the box when done experimenting:
+  `clouddevbox destroy kvm --profile <p>`.
 
 ### Molecule Testing
 
@@ -172,8 +178,13 @@ set the DEBUG flag before running tests:
 DEBUG=1 ./test
 ```
 
-When DEBUG=1 is active, the process will pause and drop you into a command prompt inside the provisioned environment.
+When DEBUG=1 is active, the process will pause and drop you into a command prompt inside the provisioned environment (kora ssh).
 This allows you to manually verify configuration, inspect variables, and test system state before the run continues.
+
+To watch the VM display (mandatory for desktop/X11 plugins, per homelab
+CLAUDE.md §14.1): the harness prints its per-run `KORA_HOME` in the logs —
+run `KORA_HOME=<that path> kora vnc` in a second terminal, or use DEBUG=1 to
+hold the VM open.
 
 ## License
 
