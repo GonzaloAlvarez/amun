@@ -46,6 +46,29 @@
   changed_when: "'termux_properties_removed=1' in stock_termux_properties_cleanup.stdout"
   when: amun_is_termux | default(false)
 
+# Omarchy ships a stock ~/.config/nvim (a plain directory, not a git repo),
+# which blocks Seshat from cloning the user's nvim config there. Move it aside
+# (non-destructively) so Seshat proceeds — only on Omarchy, and only when it
+# isn't already a git checkout (a user's own clone still blocks, keeping
+# Seshat's safety). Ansible reports Omarchy as 'Archlinux' (it keys off
+# /etc/arch-release), so detect it by os-release ID.
+- name: Detect Omarchy
+  ansible.builtin.command: grep -qi '^ID=omarchy' /etc/os-release
+  register: dotfiles_omarchy_probe
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Archlinux'
+
+- name: Move Omarchy's stock ~/.config/nvim aside so Seshat can manage it
+  ansible.builtin.shell: |
+    d="$HOME/.config/nvim"
+    if [ -d "$d" ] && [ ! -e "$d/.git" ]; then
+      mv "$d" "$d.omarchy-default.$(date +%s)" && echo moved
+    fi
+  register: omarchy_nvim_backup
+  changed_when: "'moved' in omarchy_nvim_backup.stdout"
+  when: (dotfiles_omarchy_probe.rc | default(1)) == 0
+
 # Seshat exit codes: 0 clean, 1 error, 2 blocked/unsafe — all nonzero must
 # fail the play (dotfiles CLAUDE.md). No failed_when: false here.
 - name: Install dotfiles

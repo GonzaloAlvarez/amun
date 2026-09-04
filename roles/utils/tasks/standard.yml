@@ -79,12 +79,31 @@
   import_tasks: ubuntu_neovim.yml
   when: ansible_facts['distribution'] == 'Ubuntu'
 
-- name: Update packages (Arch)
+# Ansible reports Omarchy as distribution 'Archlinux' (it keys off
+# /etc/arch-release, not os-release NAME), so detect it by its os-release ID.
+- name: Detect Omarchy (owns its own updates; blocks direct pacman -Syu)
+  ansible.builtin.command: grep -qi '^ID=omarchy' /etc/os-release
+  register: omarchy_probe
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Archlinux'
+
+- name: Refresh package DB (Arch)
   community.general.pacman:
     update_cache: yes
-    upgrade: yes
   become: true
   when: ansible_facts['os_family'] == 'Archlinux'
+
+# Omarchy blocks a direct `pacman -Syu` via a pre-transaction hook and owns
+# system upgrades through `omarchy update` (snapshots, migrations, keyrings).
+# Refresh the DB above, but leave the full upgrade to Omarchy on that distro.
+- name: Upgrade packages (Arch, not Omarchy)
+  community.general.pacman:
+    upgrade: yes
+  become: true
+  when:
+    - ansible_facts['os_family'] == 'Archlinux'
+    - (omarchy_probe.rc | default(1)) != 0
 
 - name: Install packages (Arch)
   community.general.pacman:
