@@ -85,6 +85,34 @@ try:
             subprocess.run(["sudo", "-n", "true"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except subprocess.CalledProcessError:
             ask_sudo = "-K"
+            # Ansible's password become is unreliable with sudo-rs (the default
+            # sudo on recent Arch/Omarchy and Ubuntu 26.04+): sudo-rs doesn't
+            # honor the -p custom prompt Ansible sets, so become hangs with
+            # "Timed out waiting for become success or become password prompt".
+            # amun's end state is passwordless sudo for this user anyway
+            # (permissions role), so establish it up front with a direct sudo
+            # (works with any sudo via the tty/askpass prompt) and run Ansible
+            # passwordless. If sudo can't authenticate here, fall back to -K.
+            _user = subprocess.run(["id", "-un"], stdout=subprocess.PIPE, text=True).stdout.strip()
+            # sudo is last-match-wins; the distro's own per-user rule (e.g.
+            # Omarchy's /etc/sudoers.d/04_gonzalo, password-required) must not
+            # sort AFTER ours, so name the drop-in to be read last.
+            _drop = "/etc/sudoers.d/zz-amun-nopasswd"
+            # -A lets sudo read the password via SUDO_ASKPASS when there's no
+            # tty (unattended runs); on a real terminal plain sudo prompts.
+            _askpass = ["-A"] if os.environ.get("SUDO_ASKPASS") else []
+            print(f"Establishing passwordless sudo for {_user} (Ansible become "
+                  "is unreliable with sudo-rs); enter your password if prompted:")
+            _wrote = subprocess.run(
+                ["sudo", *_askpass, "tee", _drop],
+                input=f"{_user} ALL=(ALL) NOPASSWD: ALL\n",
+                text=True, stdout=subprocess.DEVNULL).returncode == 0
+            if _wrote:
+                subprocess.run(["sudo", *_askpass, "chmod", "0440", _drop], check=False)
+                subprocess.run(["sudo", "-k"], check=False)
+                if subprocess.run(["sudo", "-n", "true"], stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL).returncode == 0:
+                    ask_sudo = ""
 
     # Run modules under the venv's OWN python, not a discovered system one.
     # With --connection=local, ansible_python_interpreter=auto_silent makes
