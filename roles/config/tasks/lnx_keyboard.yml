@@ -24,7 +24,18 @@
   when: ansible_facts['os_family'] == 'Debian'
 
 # Arch Linux keyboard configuration
+- name: Read current keymap (Arch)
+  ansible.builtin.command: localectl status
+  register: arch_localectl
+  changed_when: false
+  when: ansible_facts['os_family'] == 'Archlinux'
+
+# `localectl set-x11-keymap` is a bare command (always reports changed); only
+# run it when the layout isn't already us/intl, so re-runs are idempotent.
 - name: Set keyboard layout (Arch)
   ansible.builtin.command: localectl set-x11-keymap us "" intl
   become: true
-  when: ansible_facts['os_family'] == 'Archlinux'
+  when:
+    - ansible_facts['os_family'] == 'Archlinux'
+    - not (arch_localectl.stdout is search('(?m)^\s*X11 Layout:\s*us\s*$')
+           and arch_localectl.stdout is search('(?m)^\s*X11 Variant:\s*intl\s*$'))
