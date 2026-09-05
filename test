@@ -128,12 +128,22 @@ function test_platform {
 		kcmd "sudo systemctl stop unattended-upgrades" || true
 	fi
 
+	local amun_env=''
+	if [ "$os" = "omarchy" ]; then
+		# Omarchy's archinstall sudoers requires a password and `kora cmd`
+		# has no tty, so amun's bootstrap can't prompt. Hand it an askpass
+		# with kora's disposable guest password so the bootstrap can
+		# establish passwordless sudo up front (SUDO_ASKPASS + sudo -A).
+		kcmd 'printf "#!/bin/sh\necho omarchy\n" > ~/.amun-askpass && chmod 700 ~/.amun-askpass' || rc=1
+		amun_env='SUDO_ASKPASS=$HOME/.amun-askpass '
+	fi
+
 	# --- payload: amun core, then plugins ---------------------------------
 	log_output "[HOST] Staging amun repository"
 	stage_repo "$SCRIPT_DIR" || rc=1
 	kcmd 'cp ~/.amun/amun/amun ~/amun && chmod +x ~/amun' || rc=1
 	log_output "[HOST] Running amun core"
-	kcmd 'AMUN_REPO=$HOME/.amun/amun ./amun' || rc=$?
+	kcmd "${amun_env}AMUN_REPO=\$HOME/.amun/amun ./amun" || rc=$?
 
 	for plugin in "${PLUGINS[@]}"; do
 		log_output "[HOST] Running plugin: ${plugin}"
@@ -269,9 +279,9 @@ fi
 
 if [ "$CLOUD" = 1 ]; then
 	case "$PLATFORM" in
-		""|debian|ubuntu|arch) ;;
+		""|debian|ubuntu|arch|omarchy) ;;
 		*)
-			echo "Error: --cloud supports debian/ubuntu/arch (QEMU/KVM guests on the 'kvm' devbox)" >&2
+			echo "Error: --cloud supports debian/ubuntu/arch/omarchy (QEMU/KVM guests on the 'kvm' devbox)" >&2
 			exit 1
 			;;
 	esac
@@ -284,7 +294,12 @@ if [ "$CLOUD" = 1 ]; then
 			echo "Error: --cloud is billable; pass --yes to confirm non-interactively" >&2
 			exit 1
 		fi
-		echo "COST: uses the billable 'kvm' devbox (m7i.large ~\$0.10/h, created if missing)."
+		if [ "$PLATFORM" = "omarchy" ]; then
+			echo "COST: uses the billable 'kvm' devbox at m7i.xlarge (~\$0.20/h; an existing"
+			echo "      box at another type is destroyed and recreated)."
+		else
+			echo "COST: uses the billable 'kvm' devbox (m7i.large ~\$0.10/h, created if missing)."
+		fi
 		printf "Continue? [y/N] "
 		read -r ans
 		[ "$ans" = "y" ] || exit 1
@@ -305,6 +320,12 @@ case "$PLATFORM" in
         ;;
     arch|linux/arch)
         run_platform test_platform arch
+        ;;
+    omarchy)
+        # kora's omarchy target is cloud-only (x86_64 UEFI ISO on the 'kvm'
+        # devbox); there is no local backend to fall back to.
+        echo "Error: omarchy is cloud-only; run: $0 omarchy --cloud" >&2
+        exit 1
         ;;
     linux)
         # Deliberately excludes termux: in amun's platform model `linux`
@@ -332,6 +353,7 @@ case "$PLATFORM" in
         echo "  debian           - Test on Debian"
         echo "  ubuntu           - Test on Ubuntu"
         echo "  arch, linux/arch - Test on Arch Linux"
+        echo "  omarchy          - Test on Omarchy (cloud-only; requires --cloud)"
         echo "  linux            - Test on Debian + Ubuntu + Arch"
         echo "  termux-bootstrap - Test Termux bootstrap in Docker (no dotfiles/sshd)"
         echo "  termux, android  - Test complete Termux provisioning in Docker"
