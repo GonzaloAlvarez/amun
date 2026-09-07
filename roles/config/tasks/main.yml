@@ -30,4 +30,9 @@
 
     - name: Include keyboard configuration
       ansible.builtin.include_tasks: lnx_keyboard.yml
+
+    # Omarchy-only (the tasks self-guard on an os-release probe).
+    - name: Include Hyprland configuration
+      ansible.builtin.include_tasks: lnx_hyprland.yml
+      when: ansible_facts['os_family'] == 'Archlinux'
   when: ansible_facts['os_family'] != 'Darwin'

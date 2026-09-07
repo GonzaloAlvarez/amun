@@ -89,7 +89,7 @@ Knobs: `TERMUX_DOCKER_IMAGE` (alternate image/tag), `TERMUX_DOCKER_UNCONFINED=0`
 | `utils` | Install the curated package set (apt / brew / pacman) and ensure `nvim` meets a minimum version. |
 | `pki` | Fetch the homelab step-ca root CA from `http://pki.lan/cert/ca.crt` and install it into the OS trust store (Debian/Ubuntu/Arch trust dirs, macOS System keychain). Silently skips when the PKI host is unreachable, so the playbook stays green off-LAN. |
 | `dotfiles` | Clone and install `dotfiles` and `gear`. |
-| `config` | Apply OS-level UI/locale/keyboard configuration. |
+| `config` | Apply OS-level UI/locale/keyboard configuration; on Omarchy also the Hyprland trackpad (natural scroll + 3-finger workspace swipe). |
 | `ufw` | Install and enable UFW with a default-deny policy on Linux. |
 | `remoteaccess` | Install OpenSSH, harden sshd, and trust the master SSH public key. |
 

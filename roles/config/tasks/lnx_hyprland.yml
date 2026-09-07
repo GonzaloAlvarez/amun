@@ -1,0 +1,48 @@
+---
+# Omarchy (4.x) configures Hyprland in Lua: the ~/.config/hypr/*.lua files are
+# user overrides loaded AFTER the packaged defaults in
+# /usr/share/omarchy/default/hypr (which must never be edited — `omarchy
+# update` owns them). Trackpad settings belong in ~/.config/hypr/input.lua.
+#
+# amun owns a marked block inside that file rather than templating the whole
+# thing: the stock file is all commented-out examples that Omarchy improves
+# over time, and a block keeps this idempotent while leaving the rest alone.
+#
+# Ansible reports Omarchy as distribution 'Archlinux' (it keys off
+# /etc/arch-release), so detect it by os-release ID.
+- name: Detect Omarchy
+  ansible.builtin.command: grep -qi '^ID=omarchy' /etc/os-release
+  register: config_omarchy_probe
+  changed_when: false
+  failed_when: false
+
+# Pre-Lua Omarchy releases used ~/.config/hypr/*.conf; skip rather than create
+# an input.lua that nothing would load there.
+- name: Check for Omarchy's Lua input config
+  ansible.builtin.stat:
+    path: "{{ ansible_facts['env'].HOME }}/.config/hypr/input.lua"
+  register: config_hypr_input
+  when: (config_omarchy_probe.rc | default(1)) == 0
+
+# hl.config() sets individual leaves, so naming only natural_scroll leaves
+# Omarchy's other touchpad defaults (clickfinger_behavior, scroll_factor) in
+# place. The gesture is Hyprland's own three-finger horizontal swipe bound to
+# workspace switching: https://wiki.hypr.land/Configuring/Advanced-and-Cool/Gestures/
+- name: Configure trackpad (natural scroll + 3-finger workspace swipe)
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_facts['env'].HOME }}/.config/hypr/input.lua"
+    marker: "-- {mark} AMUN TRACKPAD"
+    block: |
+      hl.config({
+        input = {
+          touchpad = {
+            natural_scroll = true,
+          },
+        },
+      })
+
+      hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
+  notify: "Reload Hyprland"
+  when:
+    - (config_omarchy_probe.rc | default(1)) == 0
+    - config_hypr_input.stat.exists | default(false)

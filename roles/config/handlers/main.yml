@@ -8,3 +8,19 @@
   ansible.builtin.command: locale-gen
   become: yes
   listen: "Generate locales"
+
+# Hyprland picks config changes up on its own, but only reliably for files it
+# is watching; an explicit reload makes the trackpad change take effect in the
+# session that is already running. amun also runs over ssh (and during install,
+# before a session exists) — no instance socket is not an error.
+- name: Reload Hyprland
+  ansible.builtin.shell: |
+    runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    sig="$(ls -t "$runtime/hypr" 2>/dev/null | head -1)"
+    if [ -z "$sig" ] || ! command -v hyprctl >/dev/null 2>&1; then
+      echo "no running Hyprland instance; config applies at next login"
+      exit 0
+    fi
+    XDG_RUNTIME_DIR="$runtime" HYPRLAND_INSTANCE_SIGNATURE="$sig" hyprctl reload
+  changed_when: false
+  listen: "Reload Hyprland"
