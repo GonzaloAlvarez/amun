@@ -1,0 +1,56 @@
+---
+# Omarchy-only app-set convergence: drop the preinstalled apps we don't use and
+# guarantee Firefox. Guarded on the os-release probe registered in standard.yml
+# (Ansible reports Omarchy as distribution 'Archlinux', so distro facts can't
+# tell them apart). The package lists live in group_vars/all.yml.
+#
+# --recursive is `pacman -Rs`: orphaned dependencies go too. The apps are only
+# listed in Omarchy's ISO manifest, never depended on by the omarchy packages,
+# so nothing else is dragged out. (No --nosave: the module computes changes with
+# a --print dry-run first, and pacman refuses --nosave together with --print.)
+- name: Remove Omarchy preinstalled apps we don't use
+  community.general.pacman:
+    name: "{{ omarchy_remove_packages }}"
+    state: absent
+    extra_args: "--recursive"
+  become: true
+  when: (omarchy_probe.rc | default(1)) == 0
+
+- name: Install our Omarchy app additions
+  community.general.pacman:
+    name: "{{ omarchy_packages }}"
+    state: present
+  become: true
+  when: (omarchy_probe.rc | default(1)) == 0
+
+# xdg-settings is the single source of truth for Omarchy's browser launchers
+# (omarchy-launch-browser reads it; there is no omarchy config file for this).
+# BROWSER is unset around it because a session-wide BROWSER makes xdg-settings
+# refuse to report or change the default — Omarchy's own scripts do the same.
+- name: Read the current default browser
+  ansible.builtin.command: env -u BROWSER xdg-settings get default-web-browser
+  register: omarchy_default_browser
+  changed_when: false
+  failed_when: false
+  when: (omarchy_probe.rc | default(1)) == 0
+
+- name: Make Firefox the default browser
+  ansible.builtin.command: env -u BROWSER xdg-settings set default-web-browser firefox.desktop
+  when:
+    - (omarchy_probe.rc | default(1)) == 0
+    - "'firefox.desktop' not in (omarchy_default_browser.stdout | default(''))"
+
+- name: Ensure the environment.d directory exists
+  ansible.builtin.file:
+    path: "{{ ansible_facts['env'].HOME }}/.config/environment.d"
+    state: directory
+    mode: "0755"
+  when: (omarchy_probe.rc | default(1)) == 0
+
+# The rest of what `omarchy-install-browser firefox` does for a Wayland session.
+- name: Run Firefox natively on Wayland
+  ansible.builtin.copy:
+    dest: "{{ ansible_facts['env'].HOME }}/.config/environment.d/omarchy-firefox-wayland.conf"
+    content: "MOZ_ENABLE_WAYLAND=1\n"
+    mode: "0644"
+  when: (omarchy_probe.rc | default(1)) == 0

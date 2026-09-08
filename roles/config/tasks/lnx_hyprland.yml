@@ -46,3 +46,73 @@
   when:
     - (config_omarchy_probe.rc | default(1)) == 0
     - config_hypr_input.stat.exists | default(false)
+
+# Omarchy's Chromium web apps live in two places: keybindings in
+# default/hypr/bindings/applications.lua, and .desktop launcher entries copied
+# into ~/.local/share/applications. Both have to go. hl.unbind works here
+# because ~/.config/hypr/bindings.lua is required AFTER Omarchy's defaults, so
+# the bindings already exist by the time these run. Upstream's own switch
+# (~/.local/state/omarchy/preinstalls-removed) is deliberately not used: it
+# would also take out Obsidian, Tmux, Herdr, Spotify, Signal, 1Password,
+# Omawrite, the Docker TUI and cliamp, which we keep.
+- name: Check for Omarchy's Lua bindings config
+  ansible.builtin.stat:
+    path: "{{ ansible_facts['env'].HOME }}/.config/hypr/bindings.lua"
+  register: config_hypr_bindings
+  when: (config_omarchy_probe.rc | default(1)) == 0
+
+- name: Unbind the Chromium web apps
+  ansible.builtin.blockinfile:
+    path: "{{ ansible_facts['env'].HOME }}/.config/hypr/bindings.lua"
+    marker: "-- {mark} AMUN WEBAPPS"
+    block: |
+      hl.unbind("SUPER + SHIFT + A")          -- ChatGPT
+      hl.unbind("SUPER + SHIFT + ALT + A")    -- Grok
+      hl.unbind("SUPER + SHIFT + C")          -- Calendar (HEY)
+      hl.unbind("SUPER + SHIFT + E")          -- Email (HEY)
+      hl.unbind("SUPER + SHIFT + ALT + E")    -- New email (HEY)
+      hl.unbind("SUPER + SHIFT + Y")          -- YouTube
+      hl.unbind("SUPER + SHIFT + ALT + G")    -- WhatsApp
+      hl.unbind("SUPER + SHIFT + CTRL + G")   -- Google Messages
+      hl.unbind("SUPER + SHIFT + P")          -- Google Photos
+      hl.unbind("SUPER + SHIFT + S")          -- Google Maps
+      hl.unbind("SUPER + SHIFT + X")          -- X
+      hl.unbind("SUPER + SHIFT + ALT + X")    -- X Post
+  notify: "Reload Hyprland"
+  when:
+    - (config_omarchy_probe.rc | default(1)) == 0
+    - config_hypr_bindings.stat.exists | default(false)
+
+# Match on the launcher rather than a hardcoded name list, so web apps Omarchy
+# adds later are covered too — the same predicate omarchy-webapp-remove-all
+# uses. Deleting the entries also removes them from the menu/launcher, which
+# reads DesktopEntries.
+- name: Find Chromium web-app desktop entries
+  ansible.builtin.shell: |
+    set -o pipefail
+    d="$HOME/.local/share/applications"
+    [ -d "$d" ] || exit 0
+    grep -lE '^Exec=.*(omarchy-launch-webapp|omarchy-webapp-handler)' \
+      "$d"/*.desktop 2>/dev/null || true
+  register: config_omarchy_webapps
+  changed_when: false
+  when: (config_omarchy_probe.rc | default(1)) == 0
+
+- name: Remove Chromium web-app desktop entries
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ config_omarchy_webapps.stdout_lines | default([]) }}"
+  when: (config_omarchy_probe.rc | default(1)) == 0
+
+# HEY.desktop was the mailto handler, so removing it would orphan the
+# association; hand mailto to the browser instead.
+- name: Point mailto at the browser
+  community.general.ini_file:
+    path: "{{ ansible_facts['env'].HOME }}/.config/mimeapps.list"
+    section: "Default Applications"
+    option: "x-scheme-handler/mailto"
+    value: "firefox.desktop"
+    mode: "0644"
+    no_extra_spaces: true
+  when: (config_omarchy_probe.rc | default(1)) == 0

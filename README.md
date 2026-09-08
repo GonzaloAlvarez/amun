@@ -86,10 +86,10 @@ Knobs: `TERMUX_DOCKER_IMAGE` (alternate image/tag), `TERMUX_DOCKER_UNCONFINED=0`
 |------|---------|
 | `permissions` | Add the current user to `/etc/sudoers` with `NOPASSWD`. |
 | `homebrew` | Install Homebrew on macOS. |
-| `utils` | Install the curated package set (apt / brew / pacman) and ensure `nvim` meets a minimum version. |
+| `utils` | Install the curated package set (apt / brew / pacman) and ensure `nvim` meets a minimum version. On Omarchy, also remove the preinstalled apps we don't use and make Firefox the default browser. |
 | `pki` | Fetch the homelab step-ca root CA from `http://pki.lan/cert/ca.crt` and install it into the OS trust store (Debian/Ubuntu/Arch trust dirs, macOS System keychain). Silently skips when the PKI host is unreachable, so the playbook stays green off-LAN. |
 | `dotfiles` | Clone and install `dotfiles` and `gear`. |
-| `config` | Apply OS-level UI/locale/keyboard configuration; on Omarchy also the Hyprland trackpad (natural scroll + 3-finger workspace swipe). |
+| `config` | Apply OS-level UI/locale/keyboard configuration; on Omarchy also the Hyprland trackpad (natural scroll + 3-finger workspace swipe) and removal of the Chromium web apps. |
 | `ufw` | Install and enable UFW with a default-deny policy on Linux. |
 | `remoteaccess` | Install OpenSSH, harden sshd, and trust the master SSH public key. |
 
@@ -100,25 +100,46 @@ Developers can easily build, test, and validate **amun** locally.
 ### Prerequisites
 
 VM lifecycle is delegated to [`kora`](https://github.com/GonzaloAlvarez/kora)
-(gear: `~/.gear/com/kora/setup-darwin`), which in turn needs:
+(gear: `~/.gear/com/kora/setup-darwin` on macOS, `setup-linux` otherwise),
+which in turn needs, **on Apple Silicon**:
 
 - [`tart`](https://github.com/cirruslabs/tart) + [`sshpass`](https://linux.die.net/man/1/sshpass)
-  for sequoia/debian/ubuntu guests on Apple Silicon
+  for sequoia/debian/ubuntu guests
 - `qemu` (Homebrew) for the arch guest
 
 ```bash
 brew install cirruslabs/cli/tart cirruslabs/cli/sshpass qemu
 ```
 
-An uninstalled kora working tree also works: `KORA_BIN=~/dev/kora/kora ./test …`
+**On x86_64 Linux** it needs the QEMU/KVM toolchain instead — `amun qemu`
+installs it (qemu-system-x86, `qemu-img`, OVMF firmware, an ISO builder,
+`socat`, and the `kvm` group):
+
+```bash
+amun qemu            # then check: ls /dev/kvm
+```
+
+That unlocks the debian/ubuntu/arch cloud-image guests *and* the omarchy
+desktop guest locally. Budget ~20 GB under `~/.local/share/kora/cache` for
+omarchy (a 5.8 GB ISO plus the installed base image).
+
+An uninstalled kora working tree also works: `KORA_BIN=~/dev/core/kora/kora ./test …`
 
 ### Running tests
 
 ```bash
-./test              # all platforms: sequoia, debian, ubuntu, arch
+./test              # the stable set: sequoia, debian, ubuntu, arch
 ./test debian       # one platform
 ./test debian -p docker   # converge core, then the amun-docker plugin
+./test omarchy      # desktop guest; first run fetches + installs a 5.8G ISO
 ```
+
+`./test omarchy` is opt-in because of that first run: it downloads the Omarchy
+ISO, installs unattended (~2 min on a fast local host, up to ~40 min on the
+cloud box) and snapshots the result, after which every run is a COW overlay of
+that cached base and boots in ~20 s. On Linux, prefer
+`TMPDIR=~/.cache/amun-test` so the guest disk doesn't land on the `/tmp` tmpfs
+(i.e. in RAM).
 
 Each platform run creates a fresh VM in an isolated `KORA_HOME` (unique VM
 names, no interference with a dev VM you may have), stages the working trees
@@ -127,15 +148,18 @@ VM. The staged tree is always what's tested — never a live host mount.
 
 ### Cloud testing (`--cloud`)
 
-Local tart/QEMU VMs run under macOS hvf, which cannot nest virtualization —
-plugins that need a real `/dev/kvm` (e.g. `amun-qemu`) can't be validated
-locally. `--cloud` runs the same payload in a fresh QEMU/KVM guest on the
+`--cloud` is the escape hatch for hosts that **can't nest x86 KVM** — on an
+Apple Silicon Mac, local VMs run under macOS hvf, so plugins that need a real
+`/dev/kvm` (e.g. `amun-qemu`) and the omarchy guest can't be validated there.
+On an x86_64 Linux host with `/dev/kvm`, prefer running locally: it's free and
+faster. `--cloud` runs the same payload in a fresh QEMU/KVM guest on the
 **persistent** `kvm` devbox (created on first use via
 [`clouddevbox`](https://github.com/GonzaloAlvarez/cn-cli-devbox)):
 
 ```bash
 ./test --cloud --profile <aws-profile> -p <plugin>          # debian guest (default)
 ./test arch --cloud --profile <aws-profile> -p <plugin>     # ubuntu/arch guests too
+./test omarchy --cloud --profile <p>                        # forces an m7i.xlarge box
 DEBUG=1 ./test --cloud --profile <p> -p <plugin>            # shell in the guest before teardown
 ```
 
@@ -184,7 +208,16 @@ This allows you to manually verify configuration, inspect variables, and test sy
 To watch the VM display (mandatory for desktop/X11 plugins, per homelab
 CLAUDE.md §14.1): the harness prints its per-run `KORA_HOME` in the logs —
 run `KORA_HOME=<that path> kora vnc` in a second terminal, or use DEBUG=1 to
-hold the VM open.
+hold the VM open. `kora vnc` auto-opens a viewer only on macOS; on Linux it
+prints the URL for a client of your own (`pacman -S tigervnc` →
+`vncviewer 127.0.0.1:59xx`).
+
+For the omarchy guest, the ISO install is the long, quiet part — follow the
+guest's serial console while it runs:
+
+```bash
+tail -f $KORA_HOME/vms/*/console.log
+```
 
 ## License
 

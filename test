@@ -70,6 +70,12 @@ function cleanup {
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 TMPWORK="$(mktemp -d)"
+# A missing TMPDIR makes mktemp fail; an empty TMPWORK would then silently
+# point KORA_HOME and the staging tarballs at /, so stop here instead.
+if [ -z "$TMPWORK" ] || [ ! -d "$TMPWORK" ]; then
+	echo "Error: could not create a work dir${TMPDIR:+ (TMPDIR=$TMPDIR - does it exist?)}" >&2
+	exit 1
+fi
 trap 'rm -rf "$TMPWORK"' EXIT
 
 function kcmd {
@@ -134,8 +140,17 @@ function test_platform {
 		# has no tty, so amun's bootstrap can't prompt. Hand it an askpass
 		# with kora's disposable guest password so the bootstrap can
 		# establish passwordless sudo up front (SUDO_ASKPASS + sudo -A).
+		# (the literal password mirrors kora's OMARCHY_PASSWORD)
 		kcmd 'printf "#!/bin/sh\necho omarchy\n" > ~/.amun-askpass && chmod 700 ~/.amun-askpass' || rc=1
 		amun_env='SUDO_ASKPASS=$HOME/.amun-askpass '
+		# The guest otherwise sits at the SDDM greeter with no user session, so
+		# nothing desktop-side (hyprctl, the omarchy shell) can be asserted -
+		# and amun's Hyprland reload handler would have nothing to reload.
+		# sudo -A here too: passwordless sudo doesn't exist until amun runs.
+		kcmd 'export SUDO_ASKPASS=$HOME/.amun-askpass
+		      printf "[Autologin]\nUser=gonzalo\nSession=hyprland\n" > /tmp/00-autologin.conf
+		      sudo -A install -m 644 /tmp/00-autologin.conf /etc/sddm.conf.d/00-autologin.conf &&
+		      sudo -A systemctl restart sddm' || rc=1
 	fi
 
 	# --- payload: amun core, then plugins ---------------------------------
@@ -272,8 +287,13 @@ function run_platform {
 
 if [ "$PLATFORM" != "termux" ] && [ "$PLATFORM" != "android" ] && \
    [ "$PLATFORM" != "termux-bootstrap" ] && ! command -v "$KORA" >/dev/null 2>&1; then
-	echo "Error: kora not found on PATH; install via gear: ~/.gear/com/kora/setup-darwin" >&2
-	echo "       (or point KORA_BIN at a working tree: KORA_BIN=~/dev/kora/kora)" >&2
+	# gear's osstr taxonomy (same split as ~/.gear/com/kora/install.sh)
+	if [ "$(uname -s)" = "Darwin" ]; then __setup=setup-darwin
+	elif [ -f /etc/debian_version ]; then __setup=setup-debian
+	else __setup=setup-linux
+	fi
+	echo "Error: kora not found on PATH; install via gear: ~/.gear/com/kora/$__setup" >&2
+	echo "       (or point KORA_BIN at a working tree: KORA_BIN=~/dev/core/kora/kora)" >&2
 	exit 1
 fi
 
@@ -322,10 +342,12 @@ case "$PLATFORM" in
         run_platform test_platform arch
         ;;
     omarchy)
-        # kora's omarchy target is cloud-only (x86_64 UEFI ISO on the 'kvm'
-        # devbox); there is no local backend to fall back to.
-        echo "Error: omarchy is cloud-only; run: $0 omarchy --cloud" >&2
-        exit 1
+        # Local x86_64 Linux + /dev/kvm runs this natively (kora >= 0.2.7);
+        # 'amun qemu' installs qemu/OVMF/genisoimage. kora emits the one
+        # authoritative error when the host can't, so no preflight here.
+        log_output "[HOST] omarchy: first run downloads a 5.8G ISO and installs from it"
+        log_output "[HOST]   (minutes locally); later runs are COW overlays of that base"
+        run_platform test_platform omarchy
         ;;
     linux)
         # Deliberately excludes termux: in amun's platform model `linux`
@@ -353,7 +375,9 @@ case "$PLATFORM" in
         echo "  debian           - Test on Debian"
         echo "  ubuntu           - Test on Ubuntu"
         echo "  arch, linux/arch - Test on Arch Linux"
-        echo "  omarchy          - Test on Omarchy (cloud-only; requires --cloud)"
+        echo "  omarchy          - Test on Omarchy desktop (local: x86_64 Linux +"
+        echo "                     /dev/kvm, needs 'amun qemu'; first run installs"
+        echo "                     from a 5.8G ISO, later runs reuse the cached base)"
         echo "  linux            - Test on Debian + Ubuntu + Arch"
         echo "  termux-bootstrap - Test Termux bootstrap in Docker (no dotfiles/sshd)"
         echo "  termux, android  - Test complete Termux provisioning in Docker"
@@ -361,14 +385,18 @@ case "$PLATFORM" in
         echo ""
         echo "  -p, --plugins    - Run amun plugins after base provisioning"
         echo "  --cloud          - Run in a fresh QEMU/KVM VM on the persistent 'kvm'"
-        echo "                     devbox (billable; debian/ubuntu/arch; core IS re-run)"
+        echo "                     devbox (billable; debian/ubuntu/arch/omarchy; core IS"
+        echo "                     re-run). Only needed on hosts that can't nest x86 KVM."
         echo "  --profile <p>    - AWS profile for --cloud (clouddevbox picker when omitted)"
         echo "  --yes            - Skip the --cloud cost confirmation"
         echo ""
         echo "  DEBUG=1          - Interactive shell in the VM before teardown"
-        echo "  KORA_BIN=<path>  - Use an uninstalled kora (e.g. ~/dev/kora/kora)"
+        echo "  KORA_BIN=<path>  - Use an uninstalled kora (e.g. ~/dev/core/kora/kora)"
+        echo "  TMPDIR=<dir>     - Where KORA_HOME lives; set it off /tmp on Linux, where"
+        echo "                     tmpfs would hold the guest disk in RAM"
         echo "  VM display: kora's per-run state home is printed in the logs; attach"
-        echo "  with 'kora vnc' from that KORA_HOME, or DEBUG=1 + a second terminal."
+        echo "  with 'kora vnc' from that KORA_HOME (Linux: vncviewer 127.0.0.1:59xx),"
+        echo "  or DEBUG=1 + a second terminal."
         exit 1
         ;;
 esac

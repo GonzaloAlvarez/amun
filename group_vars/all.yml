@@ -62,6 +62,22 @@ arch_packages:
 
 neovim_min_version: "0.11.2"
 
+# Omarchy's ISO manifest preinstalls a broad desktop app set; amun converges it
+# to the apps we actually use. Removals are Omarchy-only (plain Arch never had
+# them). Chromium deliberately stays: Omarchy's omarchy-launch-webapp falls back
+# to it for every non-Chromium default browser, so the docs menu rows and the
+# HEY/Zoom scheme handlers need it even with Firefox as the default.
+omarchy_remove_packages:
+  - libreoffice-fresh
+  - kdenlive
+  - obs-studio
+  - localsend
+  - xournalpp
+  - moonlight-qt
+
+omarchy_packages:
+  - firefox
+
 # Termux (Android). Not linux_packages: cron/rsyslog/sudo/locales/kbd have no
 # place in a Termux prefix. jq is required by the seshat-installed
 # ~/.claude/statusline.sh and amun is the only package provisioner here.

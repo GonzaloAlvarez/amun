@@ -112,6 +112,11 @@
   become: true
   when: ansible_facts['os_family'] == 'Archlinux'
 
+# Omarchy-only app set (uses omarchy_probe above).
+- name: Converge the Omarchy app set
+  import_tasks: lnx_omarchy.yml
+  when: ansible_facts['os_family'] == 'Archlinux'
+
 - name: Find neovim binary path
   command: which nvim
   register: nvim_path_result
