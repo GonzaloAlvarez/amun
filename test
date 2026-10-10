@@ -4,11 +4,12 @@
 # owns the payload (stage repos, run ./amun) and the homelab-specific guest
 # tweaks. The Termux platform stays Docker-based below.
 #
-#   ./test [platform] [-p|--plugins <p> ...] [--cloud] [--profile <p>] [--yes]
+#   ./test [platform] [-p|--plugins <p> ...] [--post <script> ...] [--cloud] [--profile <p>] [--yes]
 #   DEBUG=1 ./test debian     # interactive shell in the VM before teardown
 #   KORA_BIN=~/dev/kora/kora ./test debian   # unreleased kora working tree
 
 PLUGINS=()
+POST_SCRIPTS=()
 PLATFORM=""
 CLOUD=0
 YES=0
@@ -45,6 +46,18 @@ while [[ $# -gt 0 ]]; do
 			CLOUD_PROFILE="$2"
 			shift 2
 			;;
+		--post)
+			# Post-converge script: copied into the guest and run after every
+			# plugin has converged (repeatable). Lets a plugin ship an e2e check
+			# that needs the converged system without this harness learning
+			# anything plugin-specific.
+			if [ $# -lt 2 ]; then
+				echo "Error: --post requires a script path" >&2
+				exit 1
+			fi
+			POST_SCRIPTS+=("$2")
+			shift 2
+			;;
 		*)
 			if [ -z "$PLATFORM" ]; then
 				PLATFORM="$1"
@@ -52,6 +65,13 @@ while [[ $# -gt 0 ]]; do
 			shift
 			;;
 	esac
+done
+
+for s in "${POST_SCRIPTS[@]}"; do
+	if [ ! -f "$s" ]; then
+		echo "Error: --post script not found: $s" >&2
+		exit 1
+	fi
 done
 
 function log_output {
@@ -166,6 +186,25 @@ function test_platform {
 		kcmd "AMUN_REPO=\$HOME/.amun/amun-${plugin} ./amun ${plugin}" || rc=$?
 	done
 
+	# --- post-converge scripts (--post) -----------------------------------
+	# Copied into the guest and run as the guest user after every plugin has
+	# converged; a non-zero exit fails the platform. Runs before the DEBUG
+	# shell so a failing check can be inspected in place.
+	for script in "${POST_SCRIPTS[@]}"; do
+		local base
+		base="$(basename "$script")"
+		log_output "[HOST] Running post script: ${base}"
+		if ! "$KORA" copy "$script" "vm:/tmp/${base}"; then
+			rc=1
+			log_output "[HOST] Post script ${base} could not be copied into the VM"
+			continue
+		fi
+		if ! kcmd "bash '/tmp/${base}'"; then
+			rc=1
+			log_output "[HOST] Post script ${base} FAILED"
+		fi
+	done
+
 	if [ "${DEBUG:-0}" = 1 ]; then
 		log_output "[HOST] DEBUG=1 - interactive shell in the VM (exit to tear down)"
 		"$KORA" ssh
@@ -200,6 +239,10 @@ function termux_teardown {
 function test_termux {
     local mode="${1:-full}"
     local rc=0
+
+    if [ ${#POST_SCRIPTS[@]} -gt 0 ]; then
+        log_output "[HOST] --post is not supported on termux; skipping ${#POST_SCRIPTS[@]} script(s)"
+    fi
 
     if ! docker info >/dev/null 2>&1; then
         log_output "[HOST] Docker is required for termux tests"
@@ -369,7 +412,7 @@ case "$PLATFORM" in
         run_platform test_platform arch
         ;;
     *)
-        echo "Usage: $0 [platform] [-p|--plugins <plugin> ...] [--cloud] [--profile <p>] [--yes]"
+        echo "Usage: $0 [platform] [-p|--plugins <plugin> ...] [--post <script> ...] [--cloud] [--profile <p>] [--yes]"
         echo ""
         echo "  mac, sequoia     - Test on macOS Sequoia"
         echo "  debian           - Test on Debian"
@@ -384,6 +427,8 @@ case "$PLATFORM" in
         echo "  (no args)        - Test on all stable platforms"
         echo ""
         echo "  -p, --plugins    - Run amun plugins after base provisioning"
+        echo "  --post <script>  - After all plugins converge, copy <script> into the VM and"
+        echo "                     run it (repeatable; non-zero exit fails the platform)"
         echo "  --cloud          - Run in a fresh QEMU/KVM VM on the persistent 'kvm'"
         echo "                     devbox (billable; debian/ubuntu/arch/omarchy; core IS"
         echo "                     re-run). Only needed on hosts that can't nest x86 KVM."

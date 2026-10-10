@@ -132,6 +132,7 @@ An uninstalled kora working tree also works: `KORA_BIN=~/dev/core/kora/kora ./te
 ./test debian       # one platform
 ./test debian -p docker   # converge core, then the amun-docker plugin
 ./test omarchy      # desktop guest; first run fetches + installs a 5.8G ISO
+./test debian --post ../amun-printer/tests/vm-e2e.sh -p docker printer   # plus a plugin e2e script run inside the VM after converge
 ```
 
 `./test omarchy` is opt-in because of that first run: it downloads the Omarchy
@@ -145,6 +146,11 @@ Each platform run creates a fresh VM in an isolated `KORA_HOME` (unique VM
 names, no interference with a dev VM you may have), stages the working trees
 into the guest with `kora copy`, runs `AMUN_REPO=… ./amun`, and removes the
 VM. The staged tree is always what's tested — never a live host mount.
+
+`--post <script>` (repeatable) copies a script into the guest after every
+plugin has converged and runs it as the guest user; a non-zero exit fails the
+platform. Plugins use it for end-to-end checks that need the converged
+system (fake devices, REST calls) — the harness learns nothing plugin-specific.
 
 ### Cloud testing (`--cloud`)
 
