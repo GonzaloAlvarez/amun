@@ -38,3 +38,21 @@
       changed_when: false
       become: true
       failed_when: password_auth_check.rc != 0
+
+    - name: Stat the sshd_config.d include directory
+      ansible.builtin.stat:
+        path: /etc/ssh/sshd_config.d
+      register: sshd_config_d_verify
+
+    - name: Check the first-sorting amun drop-in disables password auth (when the include dir exists)
+      ansible.builtin.command: grep -x "PasswordAuthentication no" /etc/ssh/sshd_config.d/00-amun.conf
+      changed_when: false
+      become: true
+      when: sshd_config_d_verify.stat.exists
+
+    - name: Check the effective sshd policy (sshd -T) has password auth off
+      ansible.builtin.shell: set -o pipefail && /usr/sbin/sshd -T | grep -x "passwordauthentication no"
+      args:
+        executable: /bin/bash
+      changed_when: false
+      become: true

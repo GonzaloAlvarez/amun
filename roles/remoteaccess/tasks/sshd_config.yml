@@ -18,3 +18,30 @@
     validate: /usr/sbin/sshd -t -f %s
   become: true
   notify: Restart sshd
+
+# Debian/Ubuntu/Raspberry Pi OS sshd_config starts with
+# `Include /etc/ssh/sshd_config.d/*.conf`, and sshd keeps the FIRST value it
+# sees. Cloud-init (Raspberry Pi Imager customisation) drops
+# 50-cloud-init.conf with `PasswordAuthentication yes` there, which silently
+# defeats the two lineinfile edits above (seen on printer.lan, 2026-10-11).
+# A drop-in that sorts first wins regardless of what the installer added.
+- name: Check for an sshd_config.d include directory
+  ansible.builtin.stat:
+    path: /etc/ssh/sshd_config.d
+  register: sshd_config_d
+
+- name: Harden sshd through a first-sorting drop-in (wins over installer drop-ins)
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/00-amun.conf
+    content: |
+      # Managed by amun (roles/remoteaccess). Sorted before installer drop-ins
+      # such as 50-cloud-init.conf; sshd honours the first value it reads.
+      PermitRootLogin no
+      PasswordAuthentication no
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  become: true
+  when: sshd_config_d.stat.exists and sshd_config_d.stat.isdir
+  notify: Restart sshd
