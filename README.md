@@ -86,7 +86,7 @@ Knobs: `TERMUX_DOCKER_IMAGE` (alternate image/tag), `TERMUX_DOCKER_UNCONFINED=0`
 |------|---------|
 | `permissions` | Add the current user to `/etc/sudoers` with `NOPASSWD`. |
 | `homebrew` | Install Homebrew on macOS. |
-| `utils` | Install the curated package set (apt / brew / pacman) and ensure `nvim` meets a minimum version. On Omarchy, also remove the preinstalled apps we don't use and make Firefox the default browser. |
+| `utils` | Install the curated package set (apt / brew / pacman) and ensure `nvim` meets a minimum version. On Ubuntu, remove snapd completely (every snap, the daemon, its data; a negative pin keeps it out) and, on a desktop, install Firefox from the Mozilla Team PPA (`ubuntu_remove_snapd`, `ubuntu_firefox` in `group_vars/all.yml`; a snap-side Firefox profile is carried over to `~/.mozilla` first). On Omarchy, also remove the preinstalled apps we don't use and make Firefox the default browser. |
 | `pki` | Fetch the homelab step-ca root CA from `http://pki.lan/cert/ca.crt` and install it into the OS trust store (Debian/Ubuntu/Arch trust dirs, macOS System keychain). Silently skips when the PKI host is unreachable, so the playbook stays green off-LAN. |
 | `dotfiles` | Clone and install `dotfiles` and `gear`. |
 | `config` | Apply OS-level UI/locale/keyboard configuration; on Omarchy also the Hyprland trackpad (natural scroll + 3-finger workspace swipe) and removal of the Chromium web apps. |
@@ -134,6 +134,11 @@ An uninstalled kora working tree also works: `KORA_BIN=~/dev/core/kora/kora ./te
 ./test omarchy      # desktop guest; first run fetches + installs a 5.8G ISO
 ./test debian --post ../amun-printer/tests/vm-e2e.sh -p docker printer   # plus a plugin e2e script run inside the VM after converge
 ```
+
+`./test ubuntu` first installs the archive's `firefox` shim in the guest (which
+pulls the Firefox snap and its bases in), so the run exercises the real thing:
+Firefox converged to the Mozilla Team PPA build, then every snap and snapd
+removed. It needs the snap store reachable from the guest.
 
 `./test omarchy` is opt-in because of that first run: it downloads the Omarchy
 ISO, installs unattended (~2 min on a fast local host, up to ~40 min on the
@@ -197,7 +202,9 @@ The `./molecule` script will automatically install molecule and its dependencies
 ./molecule permissions verify # Run specific test step
 ```
 
-Molecule tests are available for: permissions, dotfiles, utils, remoteaccess, ufw, pki
+Molecule tests are available for: permissions, dotfiles, utils, remoteaccess, ufw, pki.
+`utils` has two scenarios: `default` (Debian 12) and `ubuntu` (Ubuntu 26.04: snapd
+purge, Firefox from the Mozilla Team PPA, snap profile carry-over).
 
 ### Debugging
 

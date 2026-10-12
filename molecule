@@ -10,6 +10,7 @@ TESTABLE_ROLES=("permissions" "dotfiles" "utils" "remoteaccess" "ufw" "pki")
 role_scenarios() {
     case "$1" in
         permissions) echo "default nopasswd-dropin nopasswd-in-sudoers" ;;
+        utils)       echo "default ubuntu" ;;
         *)           echo "default" ;;
     esac
 }

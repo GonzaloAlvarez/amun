@@ -1,0 +1,64 @@
+---
+# An Ubuntu box the way an in-place release upgrade leaves it: snapd installed,
+# a disabled Mozilla Team .sources for a past series, a hand-written pin for
+# the PPA, and a Firefox profile on the snap side with none under ~/.mozilla.
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install snapd (the deb only; no snap can run in a container)
+      ansible.builtin.apt:
+        name: snapd
+        state: present
+
+    - name: Leave a disabled Mozilla Team source for a past series behind
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/mozillateam-ubuntu-ppa-noble.sources
+        content: |
+          Types: deb
+          URIs: https://ppa.launchpadcontent.net/mozillateam/ppa/ubuntu/
+          Suites: noble
+          Components: main
+          Enabled: no
+        mode: "0644"
+
+    - name: Leave a hand-written pin for the PPA behind
+      ansible.builtin.copy:
+        dest: /etc/apt/preferences.d/mozillateamppa
+        content: |
+          Package: firefox*
+          Pin: release o=LP-PPA-mozillateam
+          Pin-Priority: 501
+        mode: "0644"
+
+    - name: Plant a snap-side Firefox profile
+      ansible.builtin.file:
+        path: /root/snap/firefox/common/.mozilla/firefox/amuntest.default-release
+        state: directory
+        mode: "0700"
+
+    - name: Write the snap-side profiles.ini
+      ansible.builtin.copy:
+        dest: /root/snap/firefox/common/.mozilla/firefox/profiles.ini
+        content: |
+          [Profile0]
+          Name=default-release
+          IsRelative=1
+          Path=amuntest.default-release
+          Default=1
+
+          [General]
+          StartWithLastProfile=1
+          Version=2
+        mode: "0644"
+
+    - name: Write a marker pref into the snap-side profile
+      ansible.builtin.copy:
+        dest: /root/snap/firefox/common/.mozilla/firefox/amuntest.default-release/prefs.js
+        content: 'user_pref("amun.molecule", true);'
+        mode: "0644"

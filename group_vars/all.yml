@@ -78,6 +78,17 @@ omarchy_remove_packages:
 omarchy_packages:
   - firefox
 
+# Ubuntu: no snapd. Every snap, the daemon, its data, plus a negative apt pin
+# so nothing brings it back (ubuntu-desktop only Recommends it; the archive's
+# firefox/thunderbird/chromium debs are shims that Depend on it). Set false on
+# a host that really needs a snap.
+ubuntu_remove_snapd: true
+
+# Firefox from the Mozilla Team PPA instead of the snap. 'auto' installs it on
+# an Ubuntu Desktop (ubuntu-desktop-minimal) or wherever a firefox deb already
+# is - the snap shim included; true/false force it either way.
+ubuntu_firefox: auto
+
 # Termux (Android). Not linux_packages: cron/rsyslog/sudo/locales/kbd have no
 # place in a Termux prefix. jq is required by the seshat-installed
 # ~/.claude/statusline.sh and amun is the only package provisioner here.

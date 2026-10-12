@@ -79,6 +79,19 @@
   import_tasks: ubuntu_neovim.yml
   when: ansible_facts['distribution'] == 'Ubuntu'
 
+- name: Install Firefox from the Mozilla Team PPA (Ubuntu)
+  import_tasks: ubuntu_firefox.yml
+  when: ansible_facts['distribution'] == 'Ubuntu'
+
+# After Firefox: the archive's firefox shim is snapd's last hard reverse
+# dependency on a desktop, and a snap profile has to be carried over before
+# `snap remove --purge` deletes it.
+- name: Remove snapd (Ubuntu)
+  import_tasks: ubuntu_snapd.yml
+  when:
+    - ansible_facts['distribution'] == 'Ubuntu'
+    - ubuntu_remove_snapd | bool
+
 # Ansible reports Omarchy as distribution 'Archlinux' (it keys off
 # /etc/arch-release, not os-release NAME), so detect it by its os-release ID.
 - name: Detect Omarchy (owns its own updates; blocks direct pacman -Syu)

@@ -1,0 +1,145 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Wait for system to be ready
+      ansible.builtin.wait_for_connection:
+        timeout: 30
+
+    # --- snapd gone -------------------------------------------------------
+    - name: Read snapd's dpkg status
+      ansible.builtin.command: dpkg-query -W -f='${db:Status-Status}' snapd
+      register: snapd_status
+      changed_when: false
+      failed_when: false
+
+    - name: Assert snapd is purged (not merely removed)
+      ansible.builtin.assert:
+        that:
+          - snapd_status.rc != 0 or snapd_status.stdout == 'not-installed'
+        fail_msg: "snapd dpkg status is '{{ snapd_status.stdout }}' (rc {{ snapd_status.rc }})"
+
+    - name: Look for the snap binary
+      ansible.builtin.command: which snap
+      register: snap_binary
+      changed_when: false
+      failed_when: false
+
+    - name: Stat snapd's directories
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /snap
+        - /var/snap
+        - /var/lib/snapd
+        - /var/cache/snapd
+        - /root/snap
+      register: snap_dirs
+
+    - name: Assert nothing of snapd is left on disk
+      ansible.builtin.assert:
+        that:
+          - snap_binary.rc != 0
+          - snap_dirs.results | map(attribute='stat.exists') | select | list | length == 0
+        fail_msg: "snap binary rc {{ snap_binary.rc }}; leftover dirs: {{ snap_dirs.results | selectattr('stat.exists') | map(attribute='item') | list }}"
+
+    - name: Read apt's view of snapd
+      ansible.builtin.command: apt-cache policy snapd
+      register: snapd_policy
+      changed_when: false
+
+    - name: Assert snapd is uninstallable (negative pin in effect)
+      ansible.builtin.assert:
+        that:
+          - "'Candidate: (none)' in snapd_policy.stdout"
+        fail_msg: "{{ snapd_policy.stdout }}"
+
+    # --- Firefox from the PPA ---------------------------------------------
+    - name: Stat the apt files the role owns or must have removed
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/apt/preferences.d/nosnap
+        - /etc/apt/sources.list.d/mozillateam-ppa.sources
+        - /etc/apt/preferences.d/mozillateam-firefox
+        - /etc/apt/apt.conf.d/51unattended-upgrades-firefox
+        - /etc/apt/sources.list.d/mozillateam-ubuntu-ppa-noble.sources
+        - /etc/apt/preferences.d/mozillateamppa
+      register: apt_files
+
+    - name: Assert the managed apt files exist and the stale ones are gone
+      ansible.builtin.assert:
+        that:
+          - apt_files.results[0].stat.exists
+          - apt_files.results[1].stat.exists
+          - apt_files.results[2].stat.exists
+          - apt_files.results[3].stat.exists
+          - not apt_files.results[4].stat.exists
+          - not apt_files.results[5].stat.exists
+        fail_msg: "{{ apt_files.results | map(attribute='item') | zip(apt_files.results | map(attribute='stat.exists')) | list | to_json }}"
+
+    - name: Read apt's view of firefox
+      ansible.builtin.command: apt-cache policy firefox
+      register: firefox_policy
+      changed_when: false
+
+    - name: Pick firefox's installed and candidate versions apart
+      ansible.builtin.set_fact:
+        ff_installed: "{{ firefox_policy.stdout | regex_search('Installed: (\\S+)', '\\1') | first }}"
+        ff_candidate: "{{ firefox_policy.stdout | regex_search('Candidate: (\\S+)', '\\1') | first }}"
+
+    - name: Assert the installed firefox is the Mozilla Team build and apt agrees
+      ansible.builtin.assert:
+        that:
+          - "'~mt' in ff_installed"
+          - ff_installed == ff_candidate
+          - "'ppa.launchpadcontent.net/mozillateam' in firefox_policy.stdout"
+        fail_msg: "{{ firefox_policy.stdout }}"
+
+    - name: Run firefox --version
+      ansible.builtin.command: firefox --version
+      register: firefox_version
+      changed_when: false
+
+    - name: Assert firefox runs
+      ansible.builtin.assert:
+        that:
+          - "'Mozilla Firefox' in firefox_version.stdout"
+        fail_msg: "{{ firefox_version.stdout }} / {{ firefox_version.stderr }}"
+
+    - name: Read the unattended-upgrades origins apt sees
+      ansible.builtin.command: apt-config dump Unattended-Upgrade::Allowed-Origins
+      register: uu_origins
+      changed_when: false
+
+    - name: Assert unattended-upgrades is allowed to take the PPA
+      ansible.builtin.assert:
+        that:
+          - "'LP-PPA-mozillateam' in uu_origins.stdout"
+        fail_msg: "{{ uu_origins.stdout }}"
+
+    # --- the snap profile was carried over before the snap data went --------
+    - name: Stat the carried-over profile
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /root/.mozilla/firefox/profiles.ini
+        - /root/.mozilla/firefox/amuntest.default-release/prefs.js
+      register: native_profile
+
+    - name: Assert the snap profile now lives under ~/.mozilla
+      ansible.builtin.assert:
+        that:
+          - native_profile.results | map(attribute='stat.exists') | reject | list | length == 0
+        fail_msg: "{{ native_profile.results | map(attribute='item') | zip(native_profile.results | map(attribute='stat.exists')) | list | to_json }}"
+
+    # --- apt itself is healthy afterwards -----------------------------------
+    - name: Refresh apt lists (fails on any Signed-By conflict)
+      ansible.builtin.command: apt-get update -q
+      changed_when: false
+
+    - name: Check system is in clean state
+      ansible.builtin.command: dpkg --audit
+      register: dpkg_audit
+      changed_when: false
+      failed_when: dpkg_audit.rc != 0

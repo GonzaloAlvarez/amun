@@ -2,3 +2,5 @@
 homebrew_packages: []
 linux_packages: []
 neovim_min_version: "0.12.1"
+ubuntu_remove_snapd: true
+ubuntu_firefox: auto

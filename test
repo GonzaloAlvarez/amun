@@ -111,9 +111,11 @@ function stage_repo {
 	base="$(basename "$dir")"
 	tarball="$TMPWORK/${base}.tar.gz"
 	# 'tst'/'.venv'/'.git' are dead weight on the AMUN_REPO path and 'tst'
-	# could hold GB-scale VM artifacts in old checkouts.
+	# could hold GB-scale VM artifacts in old checkouts. '*.sock': tart drops
+	# its control.sock in the directory it is launched from - this one, while
+	# a VM runs - and bsdtar cannot archive sockets.
 	COPYFILE_DISABLE=1 tar --no-xattrs --exclude='.venv' --exclude='tst' \
-		--exclude='.git' -czf "$tarball" -C "$(dirname "$dir")" "$base" || return 1
+		--exclude='.git' --exclude='*.sock' -czf "$tarball" -C "$(dirname "$dir")" "$base" || return 1
 	"$KORA" copy "$tarball" "vm:/tmp/${base}.tar.gz" || return 1
 	kcmd "mkdir -p ~/.amun && cd ~/.amun && rm -rf '${base}' && tar -xzf '/tmp/${base}.tar.gz' && rm -f '/tmp/${base}.tar.gz'" || return 1
 }
@@ -153,6 +155,17 @@ function test_platform {
 		# cirruslabs bookworm image races apt with unattended-upgrades
 		kcmd "sudo systemctl stop unattended-upgrades" || true
 	fi
+	if [ "$os" = "ubuntu" ]; then
+		# Fixture: the cloud image ships snapd with no snaps, so install the
+		# archive's firefox - a shim that pulls the Firefox snap and its bases
+		# in. amun must then land the Mozilla Team PPA build and take every
+		# snap and snapd out: the upgraded-Ubuntu-desktop case, minus the
+		# desktop. The lock timeout rides out the image's boot-time apt jobs.
+		log_output "[HOST] ubuntu fixture: installing the snap Firefox through the archive shim"
+		kcmd "sudo DEBIAN_FRONTEND=noninteractive apt-get -q -o DPkg::Lock::Timeout=600 update &&
+		      sudo DEBIAN_FRONTEND=noninteractive apt-get -q -y -o DPkg::Lock::Timeout=600 install firefox &&
+		      snap list firefox" || { rc=1; log_output "[HOST] ubuntu fixture FAILED (snap store reachable?)"; }
+	fi
 
 	local amun_env=''
 	if [ "$os" = "omarchy" ]; then
@@ -179,6 +192,20 @@ function test_platform {
 	kcmd 'cp ~/.amun/amun/amun ~/amun && chmod +x ~/amun' || rc=1
 	log_output "[HOST] Running amun core"
 	kcmd "${amun_env}AMUN_REPO=\$HOME/.amun/amun ./amun" || rc=$?
+
+	if [ "$os" = "ubuntu" ]; then
+		# The fixture's counterpart: assert the converged end state in the
+		# guest - snapd gone for good, Firefox the Mozilla Team build, apt
+		# still healthy (a Signed-By conflict would fail the update).
+		log_output "[HOST] ubuntu: verifying snapd is gone and Firefox is the PPA build"
+		kcmd '! command -v snap >/dev/null 2>&1 && ! dpkg -s snapd >/dev/null 2>&1' || { rc=1; log_output "[FAIL] snapd still installed"; }
+		kcmd 'test ! -e /snap && test ! -e /var/snap && test ! -e /var/lib/snapd && test ! -e /var/cache/snapd && test ! -e "$HOME/snap"' || { rc=1; log_output "[FAIL] snapd leftovers on disk"; }
+		kcmd 'apt-cache policy snapd | grep -q "Candidate: (none)"' || { rc=1; log_output "[FAIL] snapd not pinned out"; }
+		kcmd 'test -f /etc/apt/preferences.d/nosnap && test -f /etc/apt/preferences.d/mozillateam-firefox && test -f /etc/apt/sources.list.d/mozillateam-ppa.sources' || { rc=1; log_output "[FAIL] managed apt files missing"; }
+		kcmd 'apt-cache policy firefox | grep -q "Installed: .*~mt"' || { rc=1; log_output "[FAIL] firefox is not the Mozilla Team build"; }
+		kcmd 'firefox --version | grep -q "Mozilla Firefox"' || { rc=1; log_output "[FAIL] firefox --version"; }
+		kcmd 'sudo apt-get update -q >/dev/null' || { rc=1; log_output "[FAIL] apt-get update after convergence"; }
+	fi
 
 	for plugin in "${PLUGINS[@]}"; do
 		log_output "[HOST] Running plugin: ${plugin}"

@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    neovim_min_version: "0.0.0"
+    # No ubuntu-desktop-minimal and no firefox deb in the container: force the
+    # Firefox path that 'auto' would take on a desktop.
+    ubuntu_firefox: true
+  roles:
+    - role: utils

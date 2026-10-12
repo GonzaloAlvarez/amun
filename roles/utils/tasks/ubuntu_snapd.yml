@@ -1,0 +1,73 @@
+---
+# Ubuntu without snapd. Every snap goes (apps before the bases they sit on,
+# snapd's own snap last), then the deb is purged, the leftover trees removed
+# and the package pinned out so that neither the desktop metapackages (which
+# only Recommend it) nor the archive's firefox/thunderbird/chromium shims (which
+# Depend on it) bring it back. Runs after ubuntu_firefox.yml: by then the
+# Firefox shim - snapd's one hard reverse dependency on a desktop - has been
+# replaced by the PPA build and the snap's profile carried over.
+- name: Remove every installed snap
+  ansible.builtin.shell: |
+    set -o pipefail
+    command -v snap >/dev/null 2>&1 || { echo removed=0; exit 0; }
+    list() { snap list --unicode=never --color=never 2>/dev/null | awk 'NR > 1 {print $1, $NF}'; }
+    removed=0
+    for round in 1 2 3 4 5 6; do
+      # Apps first, bases after: a base refuses to go while a dependent is
+      # installed, and whatever still refuses falls to the next round.
+      snaps=$(list | awk '$1 != "snapd" {print ($2 == "base" ? 1 : 0), $1}' | sort | awk '{print $2}')
+      [ -z "$snaps" ] && break
+      for s in $snaps; do
+        snap remove --purge "$s" && removed=$((removed + 1))
+      done
+    done
+    if list | awk '{print $1}' | grep -qx snapd; then
+      snap remove --purge snapd && removed=$((removed + 1))
+    fi
+    left=$(list | awk '{print $1}')
+    if [ -n "$left" ]; then
+      echo "snaps still installed: $left" >&2
+      exit 1
+    fi
+    echo "removed=$removed"
+  args:
+    executable: /bin/bash
+  become: true
+  register: snap_removal
+  changed_when: "(snap_removal.stdout_lines | last) != 'removed=0'"
+
+- name: Purge the snapd package
+  ansible.builtin.apt:
+    name: snapd
+    state: absent
+    purge: yes
+    autoremove: yes
+  become: true
+
+# Purging leaves the mount roots and the (now unmounted) snap store behind;
+# /var/lib/snapd alone is GBs of squashfs images on a desktop.
+- name: Remove what snapd leaves behind
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  become: true
+  loop:
+    - /snap
+    - /var/snap
+    - /var/lib/snapd
+    - /var/cache/snapd
+    - /root/snap
+    - "{{ ansible_facts['env']['HOME'] }}/snap"
+
+- name: Keep snapd from coming back
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/nosnap
+    content: |
+      # Managed by amun (utils role): this host runs without snapd.
+      # ubuntu-desktop(-minimal) only Recommend it; the archive's firefox,
+      # thunderbird and chromium debs are snap shims that Depend on it.
+      Package: snapd
+      Pin: release a=*
+      Pin-Priority: -10
+    mode: "0644"
+  become: true

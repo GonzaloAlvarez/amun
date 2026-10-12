@@ -1,0 +1,171 @@
+---
+# Firefox from the Mozilla Team PPA (ppa:mozillateam/ppa) instead of Ubuntu's
+# snap. The archive's `firefox` deb is a shim (1:1snap1) whose only job is to
+# pull the snap in, and its epoch outranks every real build - hence the >1000
+# pin (the Mozilla Team's own recipe) and the versioned install below: to apt,
+# and to the apt module, the move is a downgrade that `state: latest` never
+# makes.
+#
+# Gate: ubuntu_firefox true, or 'auto' on an Ubuntu Desktop
+# (ubuntu-desktop-minimal) or wherever some firefox deb already is - the shim
+# included, which is exactly the box this converges. Bare servers skip.
+# (systemd's default target is no desktop signal: cloud images ship
+# graphical.target too.)
+- name: Probe for an Ubuntu Desktop or an installed firefox package
+  ansible.builtin.command: dpkg-query -W -f='${Package} ${db:Status-Status}\n' ubuntu-desktop-minimal firefox
+  register: ubuntu_firefox_probe
+  changed_when: false
+  failed_when: false
+
+- name: Decide whether Firefox belongs on this host
+  ansible.builtin.set_fact:
+    ubuntu_firefox_wanted: >-
+      {{ (ubuntu_firefox | bool)
+         if (ubuntu_firefox | string | lower) != 'auto'
+         else (ubuntu_firefox_probe.stdout_lines | select('search', ' installed$') | list | length > 0) }}
+
+- name: Converge Firefox to the Mozilla Team PPA build
+  when: ubuntu_firefox_wanted | bool
+  block:
+    # Same hazard as the neovim PPA: two sources for one PPA with different
+    # Signed-By values make apt refuse every source, and the release upgrader
+    # leaves one disabled .sources per past series behind. Drop all but ours.
+    - name: Find other Mozilla Team PPA source files
+      ansible.builtin.shell: "grep -l 'ppa.launchpadcontent.net/mozillateam/ppa' /etc/apt/sources.list.d/* 2>/dev/null | grep -v '^/etc/apt/sources.list.d/mozillateam-ppa.sources$' || true"
+      register: mozillateam_stale_sources
+      changed_when: false
+
+    - name: Remove other Mozilla Team PPA source files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      become: true
+      loop: "{{ mozillateam_stale_sources.stdout_lines }}"
+
+    # apt takes the FIRST matching pin record and reads preferences.d in file
+    # name order, so a second pin for this origin (a hand-written one, say)
+    # makes the effective priority depend on sorting. Ours is the one.
+    - name: Find other apt pins for the Mozilla Team PPA
+      ansible.builtin.shell: "grep -l 'LP-PPA-mozillateam' /etc/apt/preferences.d/* 2>/dev/null | grep -v '^/etc/apt/preferences.d/mozillateam-firefox$' || true"
+      register: mozillateam_stale_pins
+      changed_when: false
+
+    - name: Remove other apt pins for the Mozilla Team PPA
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      become: true
+      loop: "{{ mozillateam_stale_pins.stdout_lines }}"
+
+    - name: Install python3-debian for deb822 repository management
+      ansible.builtin.apt:
+        name: python3-debian
+        state: present
+      become: true
+
+    # Key: Launchpad's signing key for ~mozillateam/ppa (RSA 4096, the
+    # post-2024 rotation), fetched from keyserver.ubuntu.com by the fingerprint
+    # the Launchpad API reports and checked against the PPA's InRelease.
+    - name: Add the Mozilla Team PPA
+      ansible.builtin.deb822_repository:
+        name: mozillateam-ppa
+        types: deb
+        uris: https://ppa.launchpadcontent.net/mozillateam/ppa/ubuntu/
+        suites: "{{ ansible_facts['distribution_release'] }}"
+        components: main
+        signed_by: "{{ lookup('ansible.builtin.file', 'mozillateam-ppa.asc') }}"
+      become: true
+      register: mozillateam_repo
+
+    - name: Prefer the PPA's firefox over the archive's snap shim
+      ansible.builtin.copy:
+        dest: /etc/apt/preferences.d/mozillateam-firefox
+        content: |
+          # Managed by amun (utils role). Ubuntu's archive firefox is a shim
+          # (epoch 1) that installs the snap; >1000 lets apt step down to the
+          # real build from the Mozilla Team PPA and keeps it there.
+          Package: firefox*
+          Pin: release o=LP-PPA-mozillateam
+          Pin-Priority: 1001
+        mode: "0644"
+      become: true
+
+    # The snap refreshed itself; keep Firefox auto-updating through
+    # unattended-upgrades (on by default on Ubuntu Desktop), which only
+    # touches origins it is told about.
+    - name: Let unattended-upgrades take Firefox updates from the PPA
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/51unattended-upgrades-firefox
+        content: |
+          // Managed by amun (utils role).
+          Unattended-Upgrade::Allowed-Origins:: "LP-PPA-mozillateam:${distro_codename}";
+        mode: "0644"
+      become: true
+
+    # The role's opening full-upgrade already refreshed the lists for every
+    # pre-existing source; only a new source needs another round.
+    - name: Refresh apt lists for the new source
+      ansible.builtin.apt:
+        update_cache: yes
+      become: true
+      when: mozillateam_repo is changed
+
+    - name: Read firefox's installed and candidate versions
+      ansible.builtin.command: apt-cache policy firefox
+      register: firefox_policy
+      changed_when: false
+
+    - name: Work out which firefox apt picks now
+      ansible.builtin.set_fact:
+        firefox_installed: "{{ firefox_policy.stdout | regex_search('Installed: (\\S+)', '\\1') | first }}"
+        firefox_candidate: "{{ firefox_policy.stdout | regex_search('Candidate: (\\S+)', '\\1') | first }}"
+
+    - name: Refuse to continue unless the PPA build is apt's candidate
+      ansible.builtin.assert:
+        that:
+          - firefox_candidate != '(none)'
+          - "'snap' not in firefox_candidate"
+        fail_msg: "apt's firefox candidate is {{ firefox_candidate }}: the Mozilla Team PPA source or pin is not in effect"
+
+    # Versioned on purpose: 1:1snap1 (epoch 1) -> the real build is a downgrade
+    # in apt's eyes, which `state: latest` would never perform. Later PPA
+    # builds move the candidate forward and land the same way.
+    - name: Install Firefox from the PPA
+      ansible.builtin.apt:
+        name: "firefox={{ firefox_candidate }}"
+        state: present
+        allow_downgrade: yes
+      become: true
+
+    # `snap remove --purge` (ubuntu_snapd.yml) deletes the snap's user data,
+    # and the snap Firefox kept its profile under ~/snap, not ~/.mozilla.
+    # Carry it over when the deb has none yet; otherwise keep a copy beside
+    # the native one for the operator to merge by hand.
+    - name: Look for a snap Firefox profile
+      ansible.builtin.stat:
+        path: "{{ ansible_facts['env']['HOME'] }}/snap/firefox/common/.mozilla/firefox/profiles.ini"
+      register: firefox_snap_profiles
+
+    - name: Look for a native Firefox profile
+      ansible.builtin.stat:
+        path: "{{ ansible_facts['env']['HOME'] }}/.mozilla/firefox/profiles.ini"
+      register: firefox_native_profiles
+
+    - name: Carry the snap Firefox profile over to ~/.mozilla
+      ansible.builtin.shell: >-
+        mkdir -p "{{ ansible_facts['env']['HOME'] }}/.mozilla" &&
+        cp -a "{{ ansible_facts['env']['HOME'] }}/snap/firefox/common/.mozilla/." "{{ ansible_facts['env']['HOME'] }}/.mozilla/"
+      args:
+        creates: "{{ ansible_facts['env']['HOME'] }}/.mozilla/firefox/profiles.ini"
+      when:
+        - firefox_snap_profiles.stat.exists
+        - not firefox_native_profiles.stat.exists
+
+    - name: Keep a copy of the snap Firefox profile beside the native one
+      ansible.builtin.command: >-
+        cp -a "{{ ansible_facts['env']['HOME'] }}/snap/firefox/common/.mozilla/firefox" "{{ ansible_facts['env']['HOME'] }}/.mozilla/firefox-snap-backup"
+      args:
+        creates: "{{ ansible_facts['env']['HOME'] }}/.mozilla/firefox-snap-backup"
+      when:
+        - firefox_snap_profiles.stat.exists
+        - firefox_native_profiles.stat.exists
