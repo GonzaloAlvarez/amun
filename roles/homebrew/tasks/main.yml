@@ -3,3 +3,35 @@
   shell: 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
   args:
     creates: "{{ '/opt/homebrew/bin/brew' if ansible_facts['architecture'] == 'arm64' else '/usr/local/bin/brew' }}"
+
+# A full Xcode that was installed but never opened has not run its first-launch
+# step (the XcodeSystemResources, CoreTypes and MobileDevice packages). Without
+# it /Library/Developer/PrivateFrameworks is missing and ibtool aborts while
+# loading its plug-ins, so any formula Homebrew has to build from source that
+# compiles nibs (pinentry-mac) dies in `make` with "Abort trap: 6". Bottled
+# installs never touch ibtool, which is why this only surfaces on Tier-3 macOS
+# releases that get no bottles (hit on ares, macOS 12 + Xcode 14.2).
+# DEVELOPER_DIR makes the probe independent of xcode-select (which may point at
+# the Command Line Tools, where xcodebuild refuses to run).
+- name: Check whether a full Xcode is installed
+  ansible.builtin.stat:
+    path: /Applications/Xcode.app/Contents/Developer
+  register: homebrew_xcode_app
+
+- name: Check Xcode first-launch status
+  ansible.builtin.command: xcodebuild -checkFirstLaunchStatus
+  environment:
+    DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+  register: homebrew_xcode_first_launch
+  changed_when: false
+  failed_when: false
+  when: homebrew_xcode_app.stat.exists
+
+- name: Complete Xcode first launch (license + system packages)
+  ansible.builtin.command: xcodebuild -runFirstLaunch
+  environment:
+    DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+  become: true
+  when:
+    - homebrew_xcode_app.stat.exists
+    - homebrew_xcode_first_launch.rc != 0

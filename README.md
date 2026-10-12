@@ -85,7 +85,7 @@ Knobs: `TERMUX_DOCKER_IMAGE` (alternate image/tag), `TERMUX_DOCKER_UNCONFINED=0`
 | Role | Purpose |
 |------|---------|
 | `permissions` | Add the current user to `/etc/sudoers` with `NOPASSWD`. |
-| `homebrew` | Install Homebrew on macOS. |
+| `homebrew` | Install Homebrew on macOS; when a full Xcode is installed, complete its first launch (`xcodebuild -runFirstLaunch`) so source builds that need `ibtool` work. |
 | `utils` | Install the curated package set (apt / brew / pacman) and ensure `nvim` meets a minimum version. On Ubuntu, remove snapd completely (every snap, the daemon, its data; a negative pin keeps it out) and, on a desktop, install Firefox from the Mozilla Team PPA (`ubuntu_remove_snapd`, `ubuntu_firefox` in `group_vars/all.yml`; a snap-side Firefox profile is carried over to `~/.mozilla` first). On Omarchy, also remove the preinstalled apps we don't use and make Firefox the default browser. |
 | `pki` | Fetch the homelab step-ca root CA from `http://pki.lan/cert/ca.crt` and install it into the OS trust store (Debian/Ubuntu/Arch trust dirs, macOS System keychain). Silently skips when the PKI host is unreachable, so the playbook stays green off-LAN. |
 | `dotfiles` | Clone and install `dotfiles` and `gear`. |
