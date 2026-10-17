@@ -1,9 +1,32 @@
 ---
-# The dynamic profile itself is Seshat-owned now (dotfiles bundles/default.yml);
-# only the default-profile GUID remains amun's job.
-- name: Set the new profile as default
+# The dynamic profile itself is Seshat-owned (dotfiles bundles/default.yml). Amun's two
+# jobs here: retire hand-imported copies of that profile left behind on pre-Seshat
+# machines (they shadow or duplicate the dynamic one), and make the dynamic profile the
+# default.
+#
+# The reconciler mirrors the stock-dotfiles rule above: it removes a saved profile ONLY
+# when it carries one of the repo's GUIDs and still matches the repo payload byte for
+# byte (identity keys aside). A profile customised in iTerm2 is kept and reported. It
+# never writes while iTerm2 is running (iTerm2 would overwrite the change from memory),
+# so on an operator's live Mac the cleanup lands on a later run.
+- name: Retire hand-imported copies of the dotfiles iTerm2 profile
+  ansible.builtin.script:
+    cmd: >-
+      iterm_reconcile_profiles.py
+      --dynamic-guid "{{ dotfiles_iterm_profile_guid }}"
+      --dynamic-file "{{ dotfiles_iterm_dynamic_profile }}"
+      --payload-dir "{{ dotfiles_iterm_payload_dir }}"
+  register: dotfiles_iterm_reconcile
+  changed_when: "'result=changed' in dotfiles_iterm_reconcile.stdout"
+
+- name: Report iTerm2 profiles left for the operator
+  ansible.builtin.debug:
+    msg: "{{ dotfiles_iterm_reconcile.stdout_lines }}"
+  when: "'result=skipped-running' in dotfiles_iterm_reconcile.stdout or 'result=kept' in dotfiles_iterm_reconcile.stdout"
+
+- name: Set the dynamic profile as default
   community.general.osx_defaults:
     domain: com.googlecode.iterm2.plist
     key: "Default Bookmark Guid"
     type: string
-    value: "D6E08B37-2920-44BE-A079-C9962B013B42"
+    value: "{{ dotfiles_iterm_profile_guid }}"

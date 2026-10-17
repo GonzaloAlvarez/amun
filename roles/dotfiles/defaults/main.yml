@@ -1,2 +1,10 @@
 ---
 # defaults file for dotfiles
+
+# iTerm2 profile shipped by the dotfiles default bundle (iterm/Profiles.json, installed
+# by Seshat as a dynamic profile). Rotated 2026-10-17 from D6E08B37-… because machines
+# bootstrapped before the dynamic profile existed carry a hand-imported saved profile
+# with that GUID, which made iTerm2 reject the dynamic one at every launch.
+dotfiles_iterm_profile_guid: "FB7442CC-F076-48E4-AF14-877A7F582994"
+dotfiles_iterm_dynamic_profile: "{{ ansible_facts['env']['HOME'] }}/Library/Application Support/iTerm2/DynamicProfiles/BlackBeast.json"
+dotfiles_iterm_payload_dir: "{{ ansible_facts['env']['HOME'] }}/.dotfiles/iterm"
